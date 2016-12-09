@@ -11,11 +11,11 @@ from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 
 from tba.hgen import c2ind,SuperSpaceConfig,inherit_docstring_from
-from blockmatrix import block_diag,SimpleBMG,join_bms,BlockMarker
+from blockmatrix import block_diag,SimpleBMG,BlockMarker
 from tensor import tdot,Tensor,BLabel
 from btensor import BTensor
 
-__all__=['random_tensor','random_sps_btensor','check_validity_tensor',
+__all__=['random_tensor','random_bbtensor','check_validity_tensor',
         'gen_eincode','contract','random_btensor','svdbd','random_bdmatrix']
 
 def gen_eincode(*labels):
@@ -59,9 +59,9 @@ def contract(*tensors):
     eincode,leglabels=gen_eincode(*labels)
     return Tensor(einsum(eincode,*tensors),labels=leglabels)
 
-def random_sps_btensor(sites=None,labels=None,nnzblock=100):
+def random_bbtensor(sites=None,labels=None,nnzblock=100):
     '''
-    Generate a random Block Tensor.
+    Generate a random Block-BTensor.
 
     Parameters:
         :labels: list/None, the labels.
@@ -88,10 +88,10 @@ def random_sps_btensor(sites=None,labels=None,nnzblock=100):
     nzblocks=nzblocks[idx]
 
     #get entries
-    data=[np.random.random([bm.blocksize(blki,useqn=False) for blki,bm in zip(blk,bms)]) for blk in nzblocks]
+    data=dict((tuple(blk),np.random.random([bm.blocksize(blki) for blki,bm in zip(blk,bms)])) for blk in nzblocks)
 
     #generate BTensor
-    return BTensor(data,labels=labels,blockmarkers=bms,nzblocks=nzblocks)
+    return BTensor(data,labels=[BLabel(lb,bm) for lb,bm in zip(labels,bms)])
 
 def random_tensor(shape=None,labels=None):
     '''
@@ -166,7 +166,12 @@ def check_validity_tensor(ts):
     valid=True
     for i in xrange(np.ndim(ts)):
         if hasattr(ts.labels[i],'bm'):
-            valid=valid and ts.shape[i]==ts.labels[i].bm.N
+            if not ts.shape[i]==ts.labels[i].bm.N: valid=False
+    if isinstance(ts.data,dict):
+        #check data
+        for blk,d in ts.data.iteritems():
+            if not tuple(lb.bm.blocksize(bi) for lb,bi in zip(ts.labels,blk))==d.shape:
+                valid=False
     return valid
 
 def svdbd_map(A,mapping_rule=None,full_matrices=False):
@@ -196,11 +201,11 @@ def svdbd_map(A,mapping_rule=None,full_matrices=False):
             m_r.append(j)
         except:
             um_l.append(i)
-            size=bm1.blocksize(lbi,useqn=True)
+            size=bm1.blocksize(bm1.index_qn(lbi)[0])
             UL.append(identity(size))
             SL.append(sps.csr_matrix((size,size)))
             continue
-        mi=extb2(extb1(A,(lbi,),axes=(0,),useqn=True),(lbj,),axes=(1,),useqn=True)
+        mi=extb2(extb1(A,(bm1.index_qn(lbi).item(),),axes=(0,)),(bm2.index_qn(lbj).item(),),axes=(1,))
         if mi.shape[0]==0 or mi.shape[1]==0:
             ui,vi=zeros([mi.shape[0]]*2),zeros([mi.shape[1]]*2)
             SL.append(sps.csr_matrix(tuple([mi.shape[0]]*2)))
@@ -269,7 +274,7 @@ def svdbd(A,cbond_str='X'):
     #do SVD
     UL,SL,VL=[],[],[]
     for lbi in common_qns_2d:
-        cell=extb2(extb1(A,(lbi,),axes=(0,),useqn=True),(lbi,),axes=(1,),useqn=True)
+        cell=extb2(extb1(A,(bm1.index_qn(lbi).item(),),axes=(0,)),(bm2.index_qn(lbi).item(),),axes=(1,))
         Ui,Si,Vi=svd(cell,full_matrices=False)
         UL.append(Ui); SL.append(Si); VL.append(Vi)
 
@@ -277,7 +282,7 @@ def svdbd(A,cbond_str='X'):
     ptr=0
     for i,lbi_1d in enumerate(qns1_1d):
         if lbi_1d!=common_qns_1d[ptr]:
-            UL.insert(i,np.zeros([bm1.blocksize(i,useqn=False),0],dtype=A.dtype))
+            UL.insert(i,np.zeros([bm1.blocksize(i),0],dtype=A.dtype))
         elif ptr!=len(common_qns_1d)-1:
             ptr=ptr+1
 
@@ -285,7 +290,7 @@ def svdbd(A,cbond_str='X'):
     ptr=0
     for i,lbi_1d in enumerate(qns2_1d):
         if lbi_1d!=common_qns_1d[ptr]:
-            VL.insert(i,np.zeros([0,bm2.blocksize(i,useqn=False)],dtype=A.dtype))
+            VL.insert(i,np.zeros([0,bm2.blocksize(i)],dtype=A.dtype))
         elif ptr!=len(common_qns_1d)-1:
             ptr=ptr+1
     nr=[len(si) for si in SL]

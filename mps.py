@@ -7,7 +7,7 @@ from scipy.linalg import svd,norm,block_diag
 import pdb,copy,numbers
 from abc import ABCMeta, abstractmethod
 
-from tba.hgen import inherit_docstring_from
+from utils import inherit_docstring_from
 from blockmatrix import BlockMarker
 from tensor import BLabel,Tensor
 from tensorlib import svdbd

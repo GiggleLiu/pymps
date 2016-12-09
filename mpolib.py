@@ -165,7 +165,8 @@ def random_bmpo(bmg,nsite=10,maxN=6):
     bms=[bmi]
     OL=[]
     for i in xrange(nsite):
-        bmi,pm=bmg.join_bms([bmi,bm1,bm1],signs=[1,1,-1],compact_form=True)
+        bmi=bmg.join_bms([bmi,bm1,bm1],signs=[1,1,-1])
+        bmi,pm=bmi.compact_form()
         #create a random block diagonal matrix
         ts=random_bdmatrix(bmi)
         dim=min(maxN,(hndim**2)**(nsite-i-1))
@@ -175,11 +176,11 @@ def random_bmpo(bmg,nsite=10,maxN=6):
             randarr=arange(bmi.N)
             random.shuffle(randarr)
             kpmask[randarr[:dim]]=True
-            ts=ts.take(kpmask,axis=1,useqn=False)
+            ts=ts.take(kpmask,axis=1)
         else:
             kpmask=None
         #unsort left labels, truncate right labels
-        ts=ts.take(argsort(pm),axis=0,useqn=False)
+        ts=ts.take(argsort(pm),axis=0)
         bmi=ts.labels[1].bm
         ts=reshape(ts,[-1,hndim,hndim,ts.shape[-1]])
         bms.append(bmi)

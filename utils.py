@@ -6,9 +6,10 @@ from numpy import *
 from scipy import sparse as sps
 from scipy.linalg import norm,svd
 from scipy.sparse.linalg import LinearOperator
+import cPickle as pickle
 import pdb
 
-__all__=['icgs','fast_svd','eigen_cholesky']
+__all__=['icgs','fast_svd','eigen_cholesky','inherit_docstring_from','quicksave','quickload']
 
 def icgs(u,Q,M=None,colwise=True,return_norm=False):
     '''
@@ -87,3 +88,21 @@ def eigen_cholesky(A,tol=1e-10):
     X=(V[:,kpmask]*sqrt(E[kpmask])).T.conj()
     return X
 
+def inherit_docstring_from(cls):
+    def docstring_inheriting_decorator(fn):
+        fn.__doc__ = getattr(cls, fn.__name__).__doc__
+        return fn
+    return docstring_inheriting_decorator
+
+def quicksave(filename,obj):
+    '''Save an instance.'''
+    f=open(filename,'wb')
+    pickle.dump(obj,f,1)
+    f.close()
+
+def quickload(filename):
+    '''Load an instance.'''
+    f=open(filename,'rb')
+    obj=pickle.load(f)
+    f.close()
+    return obj

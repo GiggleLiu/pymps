@@ -11,8 +11,7 @@ from abc import ABCMeta, abstractmethod
 from profilehooks import profile
 from itertools import combinations
 
-from tba.hgen import inherit_docstring_from
-from tba.lattice import Bond
+from utils import inherit_docstring_from
 from blockmatrix import BlockMarker
 import tensor
 from sa import sap,anneal,SAP

@@ -10,8 +10,7 @@ import tensor
 from contraction import USVobj,G_Gong
 from mps import MPSBase
 from tnet import TNet,find_optcontract
-from tba.hgen import inherit_docstring_from
-from utils import eigen_cholesky
+from utils import eigen_cholesky,inherit_docstring_from
 
 __all__=['ReducedMPS','get_segment','seg_overlap','SSFC2E','SSFLR','SSFE2C','SSFC2E_F']
 

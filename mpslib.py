@@ -346,7 +346,8 @@ def random_bmps(bmg,nsite,maxN=50):
     bms=[bmi]
     ML=[]
     for i in xrange(nsite):
-        bmi,pm=bmg.update1(bmi)
+        bmi=bmg.update1(bmi)
+        bmi,pm=bmi.compact_form()
         #create a random block diagonal matrix
         ts=random_bdmatrix(bmi,dtype='complex128')
         dim=min(maxN,hndim**(nsite-i-1))

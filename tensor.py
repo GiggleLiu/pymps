@@ -7,7 +7,7 @@ from numpy import array
 from abc import ABCMeta, abstractmethod
 import copy,pdb,numbers,itertools
 
-from tba.hgen import inherit_docstring_from
+from utils import inherit_docstring_from
 from blockmatrix import join_bms,BlockMarker
 
 __all__=['TensorBase','Tensor','tdot','BLabel']
@@ -121,7 +121,6 @@ class TensorBase(object):
         Parameters:
             :key: 0-d/1-d array, the key
             :axis: int, the axis to take.
-            :useqn: bool, use label to specify the bond if True.
 
         Return:
             <TensorBase>
@@ -172,13 +171,12 @@ class TensorBase(object):
         pass
 
     @abstractmethod
-    def get_block(self,block,useqn=False):
+    def get_block(self,block):
         '''
         Query data in specific block.
 
         Parameters:
             :block: tuple, the target block.
-            :useqn: bool, use label as the block indexer.
 
         Return:
             ndarray, the data.
@@ -305,12 +303,12 @@ class Tensor(np.ndarray,TensorBase):
 
         #regenerate the labels,
         labels=self.labels[:]
-        if np.ndim(key)==0 or (useqn and np.ndim(key)==1):
+        if np.ndim(key)==0:# or (useqn and np.ndim(key)==1):
             #0d case, delete a dimension.
             lb=labels.pop(axis)
-            if useqn:
-                key=mgrid(lb.bm.get_slice(key,useqn=True))
         elif np.ndim(key)==1:
+            if useqn:
+                key=mgrid(lb.bm.get_slice(lb.bm.index_qn(key).item()))
             if hasattr(self.labels[axis],'bm'):
                 #1d case, shrink a dimension.
                 bm=self.labels[axis].bm
@@ -321,6 +319,8 @@ class Tensor(np.ndarray,TensorBase):
                 qns=bm_infl.qns[key]
                 bm=BlockMarker(qns=qns,Nr=np.arange(len(qns)+1))
                 labels[axis]=labels[axis].chbm(bm)
+        else:
+            raise ValueError
         ts=super(Tensor,self).take(key,axis=axis)
         return Tensor(ts,labels=labels)
 
@@ -360,11 +360,11 @@ class Tensor(np.ndarray,TensorBase):
         if all([isinstance(labels[i],BLabel) for i in axes]):
             labels=self.labels
             if bmg is None:
-                bm_mid,pm=join_bms([labels[ax].bm for ax in axes],signs=signs,compact_form=False)
+                bm_mid=join_bms([labels[ax].bm for ax in axes],signs=signs)
             else:
-                bm_mid,pm=bmg.join_bms([labels[ax].bm for ax in axes],signs=signs,compact_form=False)
+                bm_mid=bmg.join_bms([labels[ax].bm for ax in axes],signs=signs)
             nlabel=BLabel(nlabel,bm_mid)
-            ts=ts.take(pm,axis=sls.start)
+            #ts=ts.take(pm,axis=sls.start)
         newlabels=labels[:sls.start]+[nlabel]+labels[sls.stop:]
 
         #generate the new tensor
@@ -383,10 +383,10 @@ class Tensor(np.ndarray,TensorBase):
         return Tensor(self.data.reshape(newshape),labels=newlabels)
 
     @inherit_docstring_from(TensorBase)
-    def get_block(self,block,useqn=False):
+    def get_block(self,block):
         if not isinstance(self.labels[0],BLabel):
             raise Exception('This tensor is not blocked!')
-        return self[tuple([lb.bm.get_slice(b,useqn=useqn) for b,lb in zip(block,self.labels)])]
+        return self[tuple([lb.bm.get_slice(b) for b,lb in zip(block,self.labels)])]
 
     def tobtensor(self,bms=None):
         '''
@@ -395,18 +395,15 @@ class Tensor(np.ndarray,TensorBase):
         Return:
             <BTensor>,
         '''
-        data=[]
+        data={}
         if bms is None: bms=[l.bm for l in self.labels]
         #detect and extract datas.
-        nzblocks=[]
         for blk in itertools.product(*[range(bm.nblock) for bm in bms]):
-            datai=self[tuple(bm.get_slice(i,useqn=False) for bm,i in zip(bms,blk))]
+            datai=self[tuple(bm.get_slice(i) for bm,i in zip(bms,blk))]
             if not np.allclose(datai,0):
-                nzblocks.append(blk)
-                data.append(datai)
-        nzblocks=array(nzblocks)
+                data[blk]=datai
         from btensor import BTensor
-        return BTensor(data,self.labels[:],blockmarkers=bms,nzblocks=nzblocks)
+        return BTensor(data,self.labels[:])
 
     def b_reorder(self,axes=None,return_pm=False):
         '''

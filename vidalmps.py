@@ -3,10 +3,10 @@ Matrix Product State.
 '''
 
 from numpy import *
-from tba.hgen import inherit_docstring_from
 import pdb,time,copy
 
 import tensor
+from utils import inherit_docstring_from
 from mps import MPSBase
 
 __all__=['VidalMPS']
