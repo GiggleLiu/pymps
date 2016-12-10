@@ -5,6 +5,7 @@ Tensor Class
 import numpy as np
 import numbers,copy,pdb
 import numbers,itertools
+import numbers
 from numpy import array
 from numpy.linalg import norm
 from scipy.linalg import svd
@@ -15,6 +16,7 @@ from blockmatrix import block_diag,SimpleBMG,join_bms,BlockMarker,trunc_bm
 from tensor import TensorBase,BLabel,Tensor
 
 __all__=['BTensor']
+
 
 class BTensor(TensorBase):
     ''''
@@ -56,6 +58,60 @@ class BTensor(TensorBase):
             s+='\n%s -> %s'%(blk,'x'.join(str(x) for x in data.shape))
         return s
 
+    def __mul__(self,target):
+        if isinstance(target,BTensor):
+            #1. get remaining axes - (raxes1, raxes2) and contracted axes - (caxes1, caxes2).
+            lb1s,lb2s=self.labels,target.labels
+            caxes1,caxes2,raxes1=[],[],[]
+            for i1,lb1 in enumerate(lb1s):
+                if lb1 in lb2s:
+                    caxes1.append(i1)
+                    caxes2.append(lb2s.index(lb1))
+                else:
+                    raxes1.append(i1)
+            raxes2=[i2 for i2 in xrange(len(lb2s)) if i2 not in caxes2]
+
+            #2. set entries
+            ndata={}
+            for bi,datai in self.data.iteritems():
+                for bj,dataj in target.data.iteritems():
+                    if tuple(bi[ax] for ax in caxes1)==tuple(bj[ax] for ax in caxes2):
+                        tblk=tuple(bi[ax] for ax in raxes1)+tuple(bj[ax] for ax in raxes2)
+                        ndata[tblk]=ndata.get(tblk,0)+np.tensordot(datai,dataj,axes=(caxes1,caxes2))
+            return BTensor(ndata,labels=[lb1s[ax] for ax in raxes1]+[lb2s[ax] for ax in raxes2])
+        elif isinstance(target,numbers.Number):
+            return BTensor(dict((blk,target*data) for blk,data in self.data.iteritems()),self.labels[:])
+        else:
+            raise TypeError
+
+    def __rmul__(self,target):
+        if isinstance(target,numbers.Number):
+            return self.__mul__(target)
+        elif isinstance(target,BTensor):
+            return target.__mul__(self)
+        else:
+            raise TypeError
+
+    def __imul__(self,target):
+        if isinstance(target,numbers.Number):
+            for data in self.data.values():
+                data*=target
+        else:
+            raise TypeError
+
+    def __div__(self,target):
+        if isinstance(target,numbers.Number):
+            return BTensor(dict((blk,data/target) for blk,data in self.data.iteritems()),self.labels[:])
+        else:
+            raise TypeError
+
+    def __idiv__(self,target):
+        if isinstance(target,numbers.Number):
+            for data in self.data.values():
+                data/=target
+        else:
+            raise TypeError
+
     @inherit_docstring_from(TensorBase)
     def todense(self):
         if self.nnzblock==0:
@@ -71,6 +127,7 @@ class BTensor(TensorBase):
     def mul_axis(self,vec,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
         t=self.make_copy(copydata=False)
         bm=self.labels[axis].bm
         vec=vec.reshape([-1]+[1]*(self.ndim-axis-1))

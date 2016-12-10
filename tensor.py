@@ -336,6 +336,7 @@ class Tensor(np.ndarray,TensorBase):
     def mul_axis(self,vec,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
         if isinstance(axis,int):
             vec=np.asarray(vec).reshape([-1]+[1]*(self.ndim-axis-1))
             res=vec*self

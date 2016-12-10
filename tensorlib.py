@@ -264,39 +264,48 @@ def svdbd(A,cbond_str='X'):
         U=Tensor(U,labels=[A.labels[0].bm,center_label])
         V=Tensor(V,labels=[center_label,A.labels[1].bm])
         return U,S,V
-    extb1,extb2=bm1.extract_block,bm2.extract_block
     qns1,qns2=bm1.qns,bm2.qns
     qns1_1d = qns1.copy().view([('',qns1.dtype)]*qns1.shape[1])
     qns2_1d = qns2.copy().view([('',qns2.dtype)]*qns2.shape[1])
     common_qns_1d=np.intersect1d(qns1_1d,qns2_1d)
     common_qns_2d=common_qns_1d.view(bm1.qns.dtype).reshape(-1,bm1.qns.shape[-1])
+    cqns1=tuple(bm1.index_qn(lbi).item() for lbi in common_qns_2d)
+    cqns2=tuple(bm2.index_qn(lbi).item() for lbi in common_qns_2d)
 
     #do SVD
     UL,SL,VL=[],[],[]
-    for lbi in common_qns_2d:
-        cell=extb2(extb1(A,(bm1.index_qn(lbi).item(),),axes=(0,)),(bm2.index_qn(lbi).item(),),axes=(1,))
+    for c1,c2 in zip(cqns1,cqns2):
+        cell=A.get_block((c1,c2))
         Ui,Si,Vi=svd(cell,full_matrices=False)
         UL.append(Ui); SL.append(Si); VL.append(Vi)
 
-    #get correct shape of UL
-    ptr=0
-    for i,lbi_1d in enumerate(qns1_1d):
-        if lbi_1d!=common_qns_1d[ptr]:
-            UL.insert(i,np.zeros([bm1.blocksize(i),0],dtype=A.dtype))
-        elif ptr!=len(common_qns_1d)-1:
-            ptr=ptr+1
-
-    #the same for VL
-    ptr=0
-    for i,lbi_1d in enumerate(qns2_1d):
-        if lbi_1d!=common_qns_1d[ptr]:
-            VL.insert(i,np.zeros([0,bm2.blocksize(i)],dtype=A.dtype))
-        elif ptr!=len(common_qns_1d)-1:
-            ptr=ptr+1
+    #get center BLabel and S
     nr=[len(si) for si in SL]
     Nr=np.append([0],np.cumsum(nr))
     b0=BLabel(cbond_str,BlockMarker(Nr=Nr,qns=common_qns_2d))
-    U,S,V=Tensor(block_diag(*UL),labels=[A.labels[0],b0]),np.concatenate(SL),Tensor(block_diag(*VL),labels=[b0,A.labels[1]])
+    S=np.concatenate(SL)
+
+    #get U, V
+    if isinstance(A,Tensor):
+        #get correct shape of UL
+        ptr=0
+        for i,lbi_1d in enumerate(qns1_1d):
+            if lbi_1d!=common_qns_1d[ptr]:
+                UL.insert(i,np.zeros([bm1.blocksize(i),0],dtype=A.dtype))
+            elif ptr!=len(common_qns_1d)-1:
+                ptr=ptr+1
+
+        #the same for VL
+        ptr=0
+        for i,lbi_1d in enumerate(qns2_1d):
+            if lbi_1d!=common_qns_1d[ptr]:
+                VL.insert(i,np.zeros([0,bm2.blocksize(i)],dtype=A.dtype))
+            elif ptr!=len(common_qns_1d)-1:
+                ptr=ptr+1
+        U,V=Tensor(block_diag(*UL),labels=[A.labels[0],b0]),Tensor(block_diag(*VL),labels=[b0,A.labels[1]])
+    elif isinstance(A,BTensor):
+        U=BTensor(dict(((b1,b2),data) for b2,(b1,data) in enumerate(zip(cqns1,UL))),labels=[A.labels[0],b0])
+        V=BTensor(dict(((b1,b2),data) for b1,(b2,data) in enumerate(zip(cqns2,VL))),labels=[b0,A.labels[1]])
 
     #detect a shape error raised by the wrong ordering of block marker.
     if A.shape[0]!=U.shape[0]:

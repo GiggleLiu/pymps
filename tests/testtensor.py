@@ -31,6 +31,24 @@ class TestBTensor2D(object):
         assert_(check_validity_tensor(self.btensor))
         assert_(check_validity_tensor(self.dtensor))
 
+    def test_mul(self):
+        print 'Test for multiplication'
+        mat2=array([[3,3,0,0,0],
+                    [0,0,1,2,2],
+                    [4,4,0,0,0]])
+        bm1=BlockMarker([0,1,2,3],[[-2],[0],[1]])
+        bm2=BlockMarker([0,2,3,5],[[-1],[0],[1]])
+        labels=[BLabel('c',bm1),BLabel('b',bm2)]
+        dtensor2=Tensor(mat2,labels=labels)
+        data={(0,0):mat2[:1,:2],(1,1):mat2[1:2,2:3],(1,2):mat2[1:2,3:],(2,0):mat2[2:,:2]}
+        btensor2=BTensor(data,labels)
+        assert_(check_validity_tensor(btensor2))
+        assert_(check_validity_tensor(dtensor2))
+        dt=self.dtensor*dtensor2
+        bt=self.btensor*btensor2
+        assert_allclose(dt,bt.todense())
+        assert_(all(dt.labels[i]==bt.labels[i] for i in xrange(len(dt.labels))))
+
     def test_data_parsing(self):
         print 'test for data parsing'
         assert_allclose(self.dtensor,self.dtensor.tobtensor().todense())
@@ -78,6 +96,7 @@ class TestBTensor2D(object):
         assert_allclose(t2,t1.todense())
 
     def test_all(self):
+        self.test_mul()
         self.test_data_parsing()
         self.test_mul_axis()
         self.test_chorder()
@@ -103,6 +122,24 @@ class TestBTensor3D(object):
         assert_(check_validity_tensor(self.btensor))
         assert_(check_validity_tensor(self.dtensor))
 
+    def test_mul(self):
+        print 'Test for multiplication'
+        mat=array([[[3,3,0,0]],
+                   [[4,4,0,0]]])
+        bm1=BlockMarker([0,1,2],[[0],[1]])
+        bm2=BlockMarker([0,1],[[3]])
+        bm3=BlockMarker([0,2,4],[[-1],[0]])
+        labels=[BLabel('a',bm1),BLabel('d',bm2),BLabel('c',bm3)]
+        dtensor2=Tensor(mat,labels=labels)
+        data={(0,0,0):mat[:1,:,:2],(1,0,0):mat[1:,:,:2]}
+        btensor2=BTensor(data,labels)
+        assert_(check_validity_tensor(btensor2))
+        assert_(check_validity_tensor(dtensor2))
+        dt=self.dtensor*dtensor2
+        bt=self.btensor*btensor2
+        assert_allclose(dt,bt.todense())
+        assert_(all(dt.labels[i]==bt.labels[i] for i in xrange(len(dt.labels))))
+
     def test_data_parsing(self):
         print 'test for data parsing'
         assert_allclose(self.dtensor,self.dtensor.tobtensor().todense())
@@ -111,9 +148,9 @@ class TestBTensor3D(object):
 
     def test_mul_axis(self):
         print 'Testing multiplying 1D array to specific axis.'
-        axis=1
-        arr=random.random(self.dtensor.shape[axis])
-        assert_allclose(self.btensor.mul_axis(arr,axis=axis).todense(),self.dtensor.mul_axis(arr,axis=axis))
+        for axis in [1,-1]:
+            arr=random.random(self.dtensor.shape[axis])
+            assert_allclose(self.btensor.mul_axis(arr,axis=axis).todense(),self.dtensor.mul_axis(arr,axis=axis))
 
     def test_take(self):
         print 'Testing taking axes!'
@@ -148,6 +185,7 @@ class TestBTensor3D(object):
         assert_allclose(t2,t1.todense())
 
     def test_all(self):
+        self.test_mul()
         self.test_data_parsing()
         self.test_mul_axis()
         self.test_chorder()
@@ -214,6 +252,7 @@ def test_btensor():
 
 def test_svdbd():
     '''Test for function svdbd'''
+    print 'Test svdbd'
     spaceconfig=SuperSpaceConfig([2,1,1])
     bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='QM')
     bms=[bmg.random_bm(nsite=i) for i in [3,4]]
@@ -229,6 +268,8 @@ def test_svdbd():
             cell[...]=random.random(cell.shape)
     U,S,V=svdbd(ts)
     assert_allclose(ts,(U*S).dot(V))
+    U2,S2,V2=svdbd(ts.tobtensor())
+    assert_allclose(ts,((U2.mul_axis(S2,-1))*V2).todense())
 
 def test_blabel():
     print 'test BLabel. chbm,chstr'
@@ -256,5 +297,5 @@ if __name__=='__main__':
     TestBTensor3D().test_all()
     test_btensor()
     test_blabel()
-    test_svdbd()
     test_tensor()
+    test_svdbd()
