@@ -12,6 +12,8 @@ from blockmatrix import join_bms,BlockMarker
 
 __all__=['TensorBase','Tensor','tdot','BLabel']
 
+ZERO_REF=1e-12
+
 class BLabel(str):
     '''
     Label string with block marker.
@@ -86,6 +88,11 @@ class TensorBase(object):
         pass
 
     @abstractmethod
+    def toarray(self):
+        '''Parse this tensor into an array.'''
+        pass
+
+    @abstractmethod
     def mul_axis(self,vec,axis):
         '''
         Multiply a vector on specific axis.
@@ -156,13 +163,13 @@ class TensorBase(object):
         pass
 
     @abstractmethod
-    def split_axis(self,axis,dims,nlabels):
+    def split_axis(self,axis,nlabels,dims=None):
         '''
         Split one axis into multiple.
 
         Parameters:
             :axis: int/str, the axes to merge.
-            :dims: tuple, the new dimensions, prod(dims)==self.shape[axis].
+            :dims: tuple, the new dimensions, can be None if nlabels contain block markers.
             :nlabels: list, the new labels.
 
         Return:
@@ -180,6 +187,19 @@ class TensorBase(object):
 
         Return:
             ndarray, the data.
+        '''
+        pass
+
+    @abstractmethod
+    def eliminate_zeros(self,tol=ZERO_REF):
+        '''
+        Remove zeros or exremely small elements.
+
+        Parameters:
+            :tol: float, the tolerance.
+
+        Return:
+            <TensorBase>, self.
         '''
         pass
 
@@ -297,18 +317,16 @@ class Tensor(np.ndarray,TensorBase):
         return self.make_copy()
 
     @inherit_docstring_from(TensorBase)
-    def take(self,key,axis,useqn=False):
+    def take(self,key,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
 
         #regenerate the labels,
         labels=self.labels[:]
-        if np.ndim(key)==0:# or (useqn and np.ndim(key)==1):
+        if np.ndim(key)==0:
             #0d case, delete a dimension.
             lb=labels.pop(axis)
         elif np.ndim(key)==1:
-            if useqn:
-                key=mgrid(lb.bm.get_slice(lb.bm.index_qn(key).item()))
             if hasattr(self.labels[axis],'bm'):
                 #1d case, shrink a dimension.
                 bm=self.labels[axis].bm
@@ -322,6 +340,29 @@ class Tensor(np.ndarray,TensorBase):
         else:
             raise ValueError
         ts=super(Tensor,self).take(key,axis=axis)
+        return Tensor(ts,labels=labels)
+
+    def take_b(self,key,axis):
+        if not hasattr(self.labels[axis],'bm'): raise ValueError
+        if isinstance(axis,str):
+            axis=self.labels.index(axis)
+
+        #regenerate the labels, get keys
+        labels=self.labels[:]
+        if np.ndim(key)==0:
+            key=[key]
+        elif np.ndim(key)>1:
+            raise ValueError
+        if isinstance(key,np.ndarray) and key.dtype=='bool':
+            key=np.where(key)[0]
+        #change block marker
+        bm=self.labels[axis].bm
+        qns,nr=bm.qns[key],bm.nr[key]
+        nbm=BlockMarker(qns=qns,Nr=np.append([0],np.cumsum(nr)))
+        labels[axis]=labels[axis].chbm(nbm)
+
+        #take values
+        ts=np.concatenate([self[(slice(None),)*axis+(bm.get_slice(k),)] for k in key],axis=axis)
         return Tensor(ts,labels=labels)
 
     @inherit_docstring_from(TensorBase)
@@ -372,22 +413,31 @@ class Tensor(np.ndarray,TensorBase):
         return Tensor(ts,labels=newlabels)
 
     @inherit_docstring_from(TensorBase)
-    def split_axis(self,axis,dims,nlabels):
+    def split_axis(self,axis,nlabels,dims=None):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if dims is None and not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
+        if dims is None: dims=[lb.bm.N for lb in nlabels]
         #get new shape
         shape=list(self.shape)
         newshape=shape[:axis]+list(dims)+shape[axis+1:]
         #get new labels
         newlabels=self.labels[:axis]+nlabels+self.labels[axis+1:]
         #generate the new tensor
-        return Tensor(self.data.reshape(newshape),labels=newlabels)
+        return Tensor(self.reshape(newshape),labels=newlabels)
+
+    def split_axis_b(*args,**kwargs):
+        return self.split_axis(*args,**kwargs)
 
     @inherit_docstring_from(TensorBase)
     def get_block(self,block):
         if not isinstance(self.labels[0],BLabel):
             raise Exception('This tensor is not blocked!')
         return self[tuple([lb.bm.get_slice(b) for b,lb in zip(block,self.labels)])]
+
+    @inherit_docstring_from(TensorBase)
+    def toarray(self):
+        return np.asarray(self)
 
     def tobtensor(self,bms=None):
         '''
@@ -422,7 +472,8 @@ class Tensor(np.ndarray,TensorBase):
         labels=self.labels[:]
         if axes is None: axes=range(np.ndim(self))
         for i in axes:
-            bm_new,pm=labels[i].bm.compact_form()
+            bm_new,info=labels[i].bm.sort(return_info=True); pm=info['pm']
+            bm_new=bm_new.compact_form()
             labels[i]=labels[i].chbm(bm_new)
             if not np.allclose(pm,np.arange(len(pm))):
                 ts=super(Tensor,ts).take(pm,axis=i)
@@ -433,3 +484,7 @@ class Tensor(np.ndarray,TensorBase):
         else:
             return ts
 
+    @inherit_docstring_from(TensorBase)
+    def eliminate_zeros(self,tol=ZERO_REF):
+        self[abs(self)<tol]=0
+        return self

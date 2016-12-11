@@ -10,9 +10,10 @@ from abc import ABCMeta, abstractmethod
 from utils import inherit_docstring_from
 from blockmatrix import BlockMarker
 from tensor import BLabel,Tensor
+from btensor import BTensor
 from tensorlib import svdbd
 
-__all__=['MPSBase','MPS','BMPS']
+__all__=['MPSBase','MPS','BMPS','mPS']
 
 ZERO_REF=1e-12
 
@@ -52,32 +53,28 @@ def _mps_sum(mpses,labels=('s','a')):
     ML[0]=ML[0].sum(axis=0)[newaxis,...]
     ML[-1]=ML[-1].sum(axis=2)[...,newaxis]
 
-    #cope with block markers
-    if hasattr(mps0,'bmg'):
-        mps=mpses[0].__class__(ML,l,S=S,labels=labels,bmg=mps0.bmg)
-    else:
-        mps=mpses[0].__class__(ML,l,S=S,labels=labels)
-    return mps
+    
+    return mPS(ML,l,S=S,labels=labels,bmg=mps0.bmg if hasattr(mps0,'bmg') else None)
 
-def _autoset_bms(mpx,bmg,check_conflicts=False):
+def _autoset_bms(TL,bmg,check_conflicts=False):
     '''
     Auto setup blockmarkers for <MPS> and <MPO>.
 
     Parameters:
-        :mpx: <MPS>/<MPO>, the tensor train to be set.
+        :TL: list, a list of tensors.
         :bmg: <BlockMarkerGenerator>,
         :check_conflicts: bool,
 
     Return:
-        mpx, with block marker set.
+        list, tensors with block marker set.
     '''
-    nsite=mpx.nsite
+    nsite=len(TL)
     bm1=bmg.bm1_
-    is_mps=ndim(mpx.get(0))==3
+    is_mps=ndim(TL[0])==3
     pm=slice(None)
     for i in xrange(nsite):
         #cell is a tensor tensor(al,sup,ar), first permute left axes to match the transformation of block marker
-        cell=mpx.get(i)[pm]
+        cell=TL[i][pm]
         #get bml
         bml=bmr if i!=0 else bmg.bm0
         #setup left, site labels.
@@ -105,11 +102,12 @@ def _autoset_bms(mpx,bmg,check_conflicts=False):
                     qns[yi]=bmlc.qns[xi]
         else:
             qns[y]=bmlc.qns[x]
-        bmr,pm=BlockMarker(Nr=arange(cell_flat.shape[1]+1),qns=qns).compact_form()
+        bmr,info=BlockMarker(Nr=arange(cell_flat.shape[1]+1),qns=qns).sort(return_info=True); pm=info['pm']
+        bmr=bmr.compact_form()
         cell=cell[...,pm]
         cell.labels[-1]=BLabel(cell.labels[-1],bmr)
-        mpx.set(i,cell)
-    return mpx
+        TL[i]=cell
+    return TL
 
 class MPSBase(object):
     '''
@@ -197,15 +195,7 @@ class MPS(MPSBase):
     def __init__(self,ML,l,S,is_ket=True,labels=['s','a']):
         assert(ndim(S)==1)
         assert(len(labels)==2)
-        s,a=labels
-        sites=[]
-        for i,M in enumerate(ML):
-            lbs=[None]*3
-            lbs[self.site_axis]='%s_%s'%(s,i)
-            lbs[self.llink_axis]='%s_%s'%(a,i)
-            lbs[self.rlink_axis]='%s_%s'%(a,i+1)
-            sites.append(Tensor(M,labels=lbs))
-        self.ML=sites
+        self.ML=ML
         self.labels=list(labels)
         self.l=l
         self.S=S
@@ -261,7 +251,7 @@ class MPS(MPSBase):
             S=identity(1)
             for mi,tmi in zip(self.get_all(attach_S=''),target.get_all(attach_S='')):
                 #need some check!
-                S=sum([mi.take(j,axis=site_axis).T.dot(S).dot(tmi.take(j,axis=site_axis)) for j in xrange(hndim)],axis=0)
+                S=sum([mi.take(j,axis=site_axis).toarray().T.dot(S).dot(tmi.take(j,axis=site_axis).toarray()) for j in xrange(hndim)],axis=0)
             return S
         else:
             raise TypeError('Can not multiply <MPS> with %s'%target.__class__)
@@ -653,20 +643,9 @@ class BMPS(MPS):
 
         *see <MPS> for more.*
     '''
-    def __init__(self,ML,l,S,bmg,bms=None,**kwargs):
+    def __init__(self,ML,l,S,bmg,**kwargs):
         super(BMPS,self).__init__(ML,l,S,**kwargs)
         self.bmg=bmg
-        if bms is not None:
-            #set up block markers manually.
-            bm1=bmg.bm1_
-            for i in xrange(self.nsite):
-                cell=self.get(i)
-                cell.labels=[BLabel(cell.labels[0],bms[i]),
-                        BLabel(cell.labels[1],bm1),
-                        BLabel(cell.labels[2],bms[i+1])]
-                self.set(i,cell)
-        else:
-            _autoset_bms(self,self.bmg)
 
     def unuse_bm(self,sharedata=True):
         '''
@@ -699,3 +678,27 @@ class BMPS(MPS):
         mps=BMPS([ai.make_copy(copydata=False) if not self.is_ket else ai.conj() for ai in self.ML],self.l,\
                 self.S if not self.is_ket else self.S.conj(),is_ket=False,labels=labels,bmg=self.bmg)
         return mps
+
+def mPS(ML,l,S,is_ket=True,labels=['s','a'],bmg=None,bms=None):
+    '''
+    Construct MPS.
+    '''
+    nML=[]
+    s,a=labels
+    for i,M in enumerate(ML):
+        lbs=['%s_%s'%(a,i),'%s_%s'%(s,i),'%s_%s'%(a,i+1)]
+        if isinstance(M,ndarray):
+            mi=Tensor(M,labels=lbs)
+        elif isinstance(M,BTensor):
+            mi=M.make_copy(labels=[bl.chstr(lb) for bl,lb in zip(M.labels,lbs)],copydata=False)
+        else:
+            raise TypeError
+        #set up block markers manually.
+        if bms is not None:
+            mi.labels=[BLabel(lbs[0],bms[i]),BLabel(lbs[1],bmg.bm1_),BLabel(lbs[2],bms[i+1])]
+        nML.append(mi)
+    if bmg is None:  #a normal MPS
+        return MPS(nML,l,S,is_ket=is_ket,labels=labels)
+    else:
+        if isinstance(nML[0],Tensor) and bms is None: _autoset_bms(nML,bmg)
+        return BMPS(nML,l,S,is_ket=is_ket,labels=labels,bmg=bmg)

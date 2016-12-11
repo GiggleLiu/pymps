@@ -11,9 +11,10 @@ from numpy.linalg import norm
 from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 
+from tba.lattice import ind2c
 from utils import inherit_docstring_from
 from blockmatrix import block_diag,SimpleBMG,join_bms,BlockMarker,trunc_bm
-from tensor import TensorBase,BLabel,Tensor
+from tensor import TensorBase,BLabel,Tensor,ZERO_REF
 
 __all__=['BTensor']
 
@@ -27,6 +28,8 @@ class BTensor(TensorBase):
         :labels: list, the labels.
     '''
     def __init__(self,data,labels):
+        #check data
+        if not all(hasattr(lb,'bm') for lb in labels): raise TypeError
         #setup data
         self.data=data
         self.labels=labels
@@ -114,14 +117,18 @@ class BTensor(TensorBase):
 
     @inherit_docstring_from(TensorBase)
     def todense(self):
+        res=Tensor(self.toarray(),labels=self.labels[:])
+        return res
+
+    @inherit_docstring_from(TensorBase)
+    def toarray(self):
         if self.nnzblock==0:
             return np.zeros(self.shape,dtype=self.dtype)
         arr=np.zeros(self.shape,dtype=self.dtype)
         bms=[lb.bm for lb in self.labels]
         for q,data in self.data.iteritems():
             arr[tuple(bmi.get_slice(qi) for qi,bmi in zip(q,bms))]=data
-        res=Tensor(arr,labels=self.labels[:])
-        return res
+        return arr
 
     @inherit_docstring_from(TensorBase)
     def mul_axis(self,vec,axis):
@@ -148,7 +155,7 @@ class BTensor(TensorBase):
         return t
 
     @inherit_docstring_from(TensorBase)
-    def take(self,key,axis,useqn=False):
+    def take(self,key,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
 
@@ -165,31 +172,55 @@ class BTensor(TensorBase):
             t=BTensor(data=datas,labels=labels)
             return t
         elif np.ndim(key)==1:
-            if useqn:
-                key=mgrid(lb.bm.get_slice(lb.bm.index_qn(key).item()))
-            if hasattr(self.labels[axis],'bm'):
-                #1d case, shrink one dimension.
-                bm=self.labels[axis].bm
-                if key.dtype=='bool':
-                    key=np.where(key)[0]
-                #inflate and take the desired dimensions
-                bm_infl=bm.inflate()
-                qns=bm_infl.qns[key]
-                nbm=BlockMarker(qns=qns,Nr=np.arange(len(qns)+1))
-                labels[axis]=labels[axis].chbm(nbm)
-                #get data
-                remaining_axes=range(axis)+range(axis+1,self.ndim)
-                bid,cid=bm.ind2b(key)
-                datas=[]
-                for i,(k,bidi,cidi) in enumerate(zip(key,bid,cid)):
-                    for bi,data in self.data.iteritems():
-                        if bi[axis]==bidi:
-                            datas[bi[:axis]+(i,)+bi[axis+1:]]=data.take(range(cidi,cidi+1),axis=axis)
-                t=BTensor(data=datas,labels=labels)
-                return t
+            #1d case, shrink one dimension.
+            bm=self.labels[axis].bm
+            if key.dtype=='bool':
+                key=np.where(key)[0]
+            #inflate and take the desired dimensions
+            bm_infl=bm.inflate()
+            qns=bm_infl.qns[key]
+            nbm=BlockMarker(qns=qns,Nr=np.arange(len(qns)+1))
+            labels[axis]=labels[axis].chbm(nbm)
+            #get data
+            bid,cid=bm.ind2b(key)
+            datas={}
+            for i,(k,bidi,cidi) in enumerate(zip(key,bid,cid)):
+                for bi,data in self.data.iteritems():
+                    if bi[axis]==bidi:
+                        datas[bi[:axis]+(i,)+bi[axis+1:]]=data.take(range(cidi,cidi+1),axis=axis)
+            t=BTensor(data=datas,labels=labels)
+            return t
         else:
             raise ValueError
 
+    def take_b(self,key,axis):
+        if isinstance(axis,str):
+            axis=self.labels.index(axis)
+
+        #regenerate the labels,
+        labels=self.labels[:]
+        if np.ndim(key)==0:
+            key=[key]
+        elif np.ndim(key)>1:
+            raise ValueError
+        #1d case, shrink one dimension.
+        bm=self.labels[axis].bm
+        if isinstance(key,np.ndarray) and key.dtype=='bool':
+            key=np.where(key)[0]
+        #change block marker
+        bm=self.labels[axis].bm
+        qns,nr=bm.qns[key],bm.nr[key]
+        nbm=BlockMarker(qns=qns,Nr=np.append([0],np.cumsum(nr)))
+        labels[axis]=labels[axis].chbm(nbm)
+
+        #get data
+        datas={}
+        for i,k in enumerate(key):
+            for bi,data in self.data.iteritems():
+                if bi[axis]==k:
+                    datas[bi[:axis]+(i,)+bi[axis+1:]]=data
+        t=BTensor(data=datas,labels=labels)
+        return t
 
     @inherit_docstring_from(TensorBase)
     def chorder(self,order):
@@ -233,8 +264,53 @@ class BTensor(TensorBase):
         return BTensor(ndata,labels=newlabels)
 
     @inherit_docstring_from(TensorBase)
-    def split_axis(self,axis,dims,nlabels):
-        raise NotImplementedError
+    def split_axis(self,axis,nlabels):
+        if isinstance(axis,str):
+            axis=self.labels.index(axis)
+        if not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
+        dims=[lb.bm.N for lb in nlabels]
+        #get new labels
+        newlabels=self.labels[:axis]+nlabels+self.labels[axis+1:]
+        #generate the new tensor
+        bms=[lb.bm for lb in nlabels]
+        bm0=self.labels[axis].bm
+        ndata={}
+        for blk,data in self.data.iteritems():
+            b0=blk[axis]
+            indices0=bm0.get_slice(b0); indices0=np.arange(indices0.start,indices0.stop)
+            cs=ind2c(indices0,N=dims)
+            bcs=[bm.ind2b(ci) for ci,bm in zip(cs.T,bms)]
+            bs,cs=np.concatenate([bc[0][:,None] for bc in bcs],axis=1),np.concatenate([bc[1][:,None] for bc in bcs],axis=1)
+            for ii,(nb,nc) in enumerate(zip(bs,cs)):
+                nblk=blk[:axis]+tuple(nb)+blk[axis+1:]
+                nshape=tuple(bm.blocksize(bi) for bm,bi in zip(bms,nb))
+                if not ndata.has_key(nblk): ndata[nblk]=np.zeros(data.shape[:axis]+nshape+data.shape[axis+1:],dtype=self.dtype)
+                ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.take(ii,axis).reshape(data.shape[:axis]+(1,)*len(nlabels)+data.shape[axis+1:])
+        return BTensor(ndata,labels=newlabels)
+
+    def split_axis_b(self,axis,nlabels):
+        if isinstance(axis,str):
+            axis=self.labels.index(axis)
+        if not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
+        dims=[lb.bm.N for lb in nlabels]
+        #get new labels
+        newlabels=self.labels[:axis]+nlabels+self.labels[axis+1:]
+        #get new datas, assume unity of blocks, not all axes can be split.
+        bms=[lb.bm for lb in nlabels]
+        bm0=self.labels[axis].bm
+        ndata={}
+        for blk,data in self.data.iteritems():
+            indices0=bm0.Nr[blk[axis]]
+            inds=ind2c(indices0,dims)
+            bcs=[bm.ind2b(ci) for ci,bm in zip(inds,bms)]
+            nb=tuple(bc[0] for bc in bcs)
+            nc=tuple(bc[1] for bc in bcs[:-1])
+            #set data
+            nblk=blk[:axis]+nb+blk[axis+1:]
+            nshape=tuple(bm.blocksize(bi) for bm,bi in zip(bms,nb))
+            if not ndata.has_key(nblk): ndata[nblk]=np.zeros(data.shape[:axis]+nshape+data.shape[axis+1:],dtype=self.dtype)
+            ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.reshape(data.shape[:axis]+(1,)*(len(nlabels)-1)+(-1,)+data.shape[axis+1:])
+        return BTensor(ndata,labels=newlabels)
 
     def sum(self,axis=None):
         '''
@@ -267,3 +343,50 @@ class BTensor(TensorBase):
     @inherit_docstring_from(TensorBase)
     def get_block(self,block):
         return self.data[block]
+
+    def conj(self):
+        '''Conjugate.'''
+        return BTensor(dict((blk,data.conj()) for blk,data in self.data.iteritems()),self.labels[:])
+
+    def b_reorder(self,axes=None,return_pm=False):
+        '''
+        Reorder rows, columns to make tensor blocked.
+
+        Parameters:
+            :axes: tuple, the target axes to be reorderd
+            :return_pm: bool, return the permutation series.
+
+        Return:
+            <Tensor>.
+        '''
+        ts=self
+        pms=[]
+        labels=self.labels[:]
+        if axes is None: axes=range(np.ndim(self))
+        for i in axes:
+            bm_new,info=labels[i].bm.sort(return_info=True)
+            bm_new=bm_new.compact_form()
+            labels[i]=labels[i].chbm(bm_new)
+            #reorder
+            pm=info['pm_b']
+            if not np.allclose(pm,np.arange(len(pm))):
+                ts=ts.take_b(pm,axis=i)
+            pms.append(pm)
+        ts.labels=labels
+        if return_pm:
+            return ts,pms
+        else:
+            return ts
+
+    @inherit_docstring_from(TensorBase)
+    def eliminate_zeros(self,tol=ZERO_REF):
+        for blk,data in self.data.iteritems():
+            if data.size==0:
+                self.data.remove(blk)
+            else:
+                mask=abs(data)<ZERO_REF
+                if all(mask):
+                    self.data.remove(blk)
+                else:
+                    data[mask]=0
+        return self

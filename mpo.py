@@ -1124,7 +1124,7 @@ class BMPO(MPO):
     def __init__(self,OL,bmg,labels=["m","s",'b']):
         super(BMPO,self).__init__(OL,labels=labels)
         self.bmg=bmg
-        _autoset_bms(self,bmg)
+        _autoset_bms(self.OL,bmg)
 
     def unuse_bm(self):
         '''Get the non-block version <MPO>.'''

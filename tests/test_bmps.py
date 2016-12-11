@@ -66,4 +66,7 @@ class MPSTest(object):
         self.test_cano()
 
 if __name__=='__main__':
-    MPSTest().test_all()
+    t=MPSTest()
+    t.test_all()
+    t.mps.ML=[m.tobtensor() for m in t.mps.ML]
+    t.test_all()

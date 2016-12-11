@@ -13,7 +13,7 @@ import pdb,time,warnings
 
 from tensor import Tensor,tdot,BLabel
 from tensorlib import contract,random_bdmatrix
-from mps import MPS,_mps_sum,MPSBase,BMPS
+from mps import MPS,_mps_sum,MPSBase,BMPS,mPS
 from vidalmps import VidalMPS
 from blockmatrix import BlockMarker,trunc_bm
 
@@ -157,7 +157,7 @@ def state2MPS(state,sitedim,l,method='qr',tol=1e-8,labels=('s','a')):
         ML2.append(bi)
     ML.extend(ML2[::-1])
     S=state.diagonal()
-    return MPS(ML,l,S=S,labels=labels)
+    return mPS(ML,l,S=S,labels=labels)
 
 def rho_on_link(mps,l=None):
     '''
@@ -285,13 +285,10 @@ def product_state(config,hndim=None,bmg=None):
     BL=reshape(BL,[nsite,1,len(BL[0]),1])
 
     #set up block markers
-    if bmg is not None:
-        if ndim(config)!=1:
-            raise Exception('Fail to using bms to this state.')
-        res=BMPS(list(BL),0,S=ones(1),bmg=bmg)
-    else:
-        res=MPS(list(BL),0,S=ones(1))
-    return res
+    if bmg is not None and ndim(config)!=1:
+        raise Exception('Fail to using bms to this state.')
+
+    return mPS(list(BL),0,S=ones(1),bmg=bmg)
 
 def random_product_state(nsite,hndim):
     '''
@@ -347,7 +344,8 @@ def random_bmps(bmg,nsite,maxN=50):
     ML=[]
     for i in xrange(nsite):
         bmi=bmg.update1(bmi)
-        bmi,pm=bmi.compact_form()
+        bmi,info=bmi.sort(return_info=True); pm=info['pm']
+        bmi=bmi.compact_form()
         #create a random block diagonal matrix
         ts=random_bdmatrix(bmi,dtype='complex128')
         dim=min(maxN,hndim**(nsite-i-1))
@@ -366,7 +364,7 @@ def random_bmps(bmg,nsite,maxN=50):
         ts=reshape(ts,[-1,hndim,ts.shape[-1]])
         bms.append(bmi)
         ML.append(ts)
-    mps=BMPS(ML=ML,l=nsite,S=ones(1),bmg=bmg)
+    mps=mPS(ML=ML,l=nsite,S=ones(1),bmg=bmg)
     return mps
 
 def random_mps(hndim=2,nsite=10,maxN=50):
@@ -389,7 +387,7 @@ def random_mps(hndim=2,nsite=10,maxN=50):
         rdim=min(maxN,hndim**(nsite-i-1),rdim)
         ts=(random.random([ldim,hndim,rdim])+1j*random.random([ldim,hndim,rdim]))/sqrt(ldim*rdim)  #the factor to make it well normed.
         ML.append(ts)
-    mps=MPS(ML=ML,l=nsite,S=ones(1))
+    mps=mPS(ML=ML,l=nsite,S=ones(1))
     return mps
 
 def check_validity_mps(mps):

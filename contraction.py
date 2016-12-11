@@ -11,7 +11,7 @@ from mpo import UNSETTLED,OpUnit,OpString,OpCollection
 from mpolib import opunit_Z
 from utils import fast_svd
 from mpslib import mps_sum
-from mps import MPS
+from mps import mPS
 from tba.hgen import kron_csr
 
 __all__=['Contractor','expect_onsite','get_expect','op_mul_mps',
@@ -358,7 +358,7 @@ def op_mul_mps(op,ket):
             M=O*M
             M=M.chorder([1,0,2])
         ML.append(M)
-    res=MPS(ML,ket.l,S=ket.S,labels=['s','a'])
+    res=mPS(ML,ket.l,S=ket.S,labels=['s','a'])
     return res
 
 class USVobj(LinearOperator):

@@ -7,7 +7,7 @@ import pdb,time,copy
 
 import tensor
 from utils import inherit_docstring_from
-from mps import MPSBase
+from mps import MPSBase,mPS
 
 __all__=['VidalMPS']
 
@@ -109,4 +109,4 @@ class VidalMPS(MPSBase):
         ML=[LL[i][:,newaxis,newaxis]*asarray(GL[i]) for i in xrange(l)]
         ML.extend([asarray(GL[i])*LL[i+1] for i in xrange(l,nsite)])
         S=LL[l]*self.factor
-        return MPS(ML,l,S,labels=labels)
+        return mPS(ML,l,S,labels=labels)

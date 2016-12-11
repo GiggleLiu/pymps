@@ -166,7 +166,8 @@ def random_bmpo(bmg,nsite=10,maxN=6):
     OL=[]
     for i in xrange(nsite):
         bmi=bmg.join_bms([bmi,bm1,bm1],signs=[1,1,-1])
-        bmi,pm=bmi.compact_form()
+        bmi,info=bmi.sort(return_info=True); pm=info['pm']
+        bmi=bmi.compact_form()
         #create a random block diagonal matrix
         ts=random_bdmatrix(bmi)
         dim=min(maxN,(hndim**2)**(nsite-i-1))

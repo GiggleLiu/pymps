@@ -23,7 +23,7 @@ class TestBTensor2D(object):
                    [4,4,0,0,0],
                    [4,4,0,0,0]])
         bm1=BlockMarker([0,1,2,4],[[-1],[0],[1]])
-        bm2=BlockMarker([0,2,3,5],[[-1],[0],[1]])
+        bm2=BlockMarker([0,2,3,5],[[-1],[1],[0]])
         labels=[BLabel('a',bm1),BLabel('b',bm2)]
         self.dtensor=Tensor(mat,labels=labels)
         data={(0,0):mat[:1,:2],(1,1):mat[1:2,2:3],(1,2):mat[1:2,3:],(2,0):mat[2:,:2]}
@@ -67,12 +67,17 @@ class TestBTensor2D(object):
         i=2
         axis_label=self.btensor.labels[axis]
         t1=self.dtensor.take(i,axis=axis)
-        #t2=self.btensor.take(i,axis=axis)
-        #assert_allclose(t1,t2.todense())
         t11=self.dtensor.take(i,axis=axis_label)
         t22=self.btensor.take(i,axis=axis_label)
-        assert_allclose(t11,t22.todense())
-        assert_allclose(t1,t11)
+        res=[4,4,0,0,0]
+        assert_allclose(t11,res)
+        assert_allclose(res,t22.todense())
+        assert_allclose(t1,res)
+        print 'Testing taking block - axes!'
+        ib,axis=2,1
+        res=zeros([4,2]); res[1]=2
+        assert_allclose(self.dtensor.take_b(ib,axis=axis),res)
+        assert_allclose(self.btensor.take_b(ib,axis=axis).todense(),res)
 
     def test_chorder(self):
         print 'Testing chorder!'
@@ -87,13 +92,30 @@ class TestBTensor2D(object):
         assert_allclose(t11,t1)
 
     def test_merge_split(self):
-        print 'Testing merge and split!'
+        print 'Testing merge!'
         axes=slice(0,2)
         t1=self.btensor.merge_axes(axes)
         t2=self.dtensor.merge_axes(axes)
+        lbs=self.btensor.labels[axes]
         tval=asarray(self.dtensor).reshape([prod(self.dtensor.shape[:2])]+list(self.dtensor.shape[2:]))
         assert_allclose(t2,tval)
         assert_allclose(t2,t1.todense())
+        print 'Testing split!'
+        t11=t1.split_axis(axis=axes.start,nlabels=lbs)
+        t11b=t1.split_axis_b(axis=axes.start,nlabels=[lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
+        t22=t2.split_axis(axis=axes.start,nlabels=lbs)
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t11.labels,self.dtensor.labels)]))
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t11b.labels,self.dtensor.labels)]))
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t22.labels,self.dtensor.labels)]))
+        assert_allclose(t22,self.dtensor)
+        assert_allclose(t11.todense(),self.dtensor)
+        assert_allclose(t11b.todense(),self.dtensor)
+
+    def test_reorder(self):
+        print 'Testing reordering!'
+        t1=self.dtensor.b_reorder()
+        t2=self.btensor.b_reorder()
+        assert_allclose(t1,t2.todense())
 
     def test_all(self):
         self.test_mul()
@@ -101,6 +123,7 @@ class TestBTensor2D(object):
         self.test_mul_axis()
         self.test_chorder()
         self.test_take()
+        self.test_reorder()
         self.test_merge_split()
 
 class TestBTensor3D(object):
@@ -164,6 +187,11 @@ class TestBTensor3D(object):
         t22=self.btensor.take(i,axis=axis_label)
         assert_allclose(t11,t22.todense())
         assert_allclose(t1,t11)
+        print 'Testing taking block - axes!'
+        ib,axis=0,2
+        res=[[[3,3],[0,0]],[[4,4],[4,4]]]
+        assert_allclose(self.dtensor.take_b(ib,axis=axis),res)
+        assert_allclose(self.btensor.take_b(ib,axis=axis).todense(),res)
 
     def test_chorder(self):
         print 'Testing chorder!'
@@ -178,11 +206,28 @@ class TestBTensor3D(object):
         assert_allclose(t11,t1)
 
     def test_merge_split(self):
-        print 'Testing merge and split!'
+        print 'Testing merge!'
         axes=slice(1,3)
+        lbs=self.dtensor.labels[axes]
         t1=self.btensor.merge_axes(axes)
         t2=self.dtensor.merge_axes(axes)
         assert_allclose(t2,t1.todense())
+        print 'Testing split!'
+        t11=t1.split_axis(axis=axes.start,nlabels=lbs)
+        t11b=t1.split_axis_b(axis=axes.start,nlabels=[lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
+        t22=t2.split_axis(axis=axes.start,nlabels=lbs)
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t11.labels,self.dtensor.labels)]))
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t11b.labels,self.dtensor.labels)]))
+        assert_(all([lb1==lb2 for lb1,lb2 in zip(t22.labels,self.dtensor.labels)]))
+        assert_allclose(t22,self.dtensor)
+        assert_allclose(t11.todense(),self.dtensor)
+        assert_allclose(t11b.todense(),self.dtensor)
+
+    def test_reorder(self):
+        print 'Testing reordering!'
+        t1=self.dtensor.b_reorder()
+        t2=self.btensor.b_reorder()
+        assert_allclose(t1,t2.todense())
 
     def test_all(self):
         self.test_mul()
@@ -191,6 +236,7 @@ class TestBTensor3D(object):
         self.test_chorder()
         self.test_take()
         self.test_merge_split()
+        self.test_reorder()
 
 
 def test_tensor():
