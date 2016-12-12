@@ -12,6 +12,7 @@ from numpy.linalg import norm
 import pdb,time,warnings
 
 from tensor import Tensor,tdot,BLabel
+from btensor import BTensor
 from tensorlib import contract,random_bdmatrix
 from mps import MPS,_mps_sum,MPSBase,BMPS,mPS
 from vidalmps import VidalMPS
@@ -479,7 +480,11 @@ def check_flow_mpx(mpx):
             cell=cell.merge_axes(slice(0,3),bmg=bmg,signs=[1,1,-1])
         else:
             cell=cell.merge_axes(slice(0,4),bmg=bmg,signs=[1,1,-1,-1])
-        kpmask=(cell>1e-10)
+        if isinstance(cell,BTensor):
+            bm=cell.labels[0].bm
+            valid=valid and all(concatenate([bm.qns[k] for k in cell.data.keys()])==0)
+            continue
+        kpmask=(abs(cell)>1e-10)
         cbm=trunc_bm(cell.labels[0].bm,kpmask)
         valid=valid and all(cbm.qns==0)
     return valid

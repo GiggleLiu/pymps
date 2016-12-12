@@ -97,7 +97,7 @@ def inherit_docstring_from(cls):
 def quicksave(filename,obj):
     '''Save an instance.'''
     f=open(filename,'wb')
-    pickle.dump(obj,f,1)
+    pickle.dump(obj,f,2)
     f.close()
 
 def quickload(filename):

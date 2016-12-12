@@ -11,7 +11,7 @@ from utils import inherit_docstring_from
 from blockmatrix import BlockMarker
 from tensor import BLabel,Tensor
 from btensor import BTensor
-from tensorlib import svdbd
+from tensorlib import svdbd,tensor_block_diag,check_validity_tensor
 
 __all__=['MPSBase','MPS','BMPS','mPS']
 
@@ -41,19 +41,20 @@ def _mps_sum(mpses,labels=('s','a')):
     site_axis=mps0.site_axis
 
     #get datas
-    ML,bms=[],[]
-    for i in xrange(nsite):
-        ai=transpose([block_diag(*[mi[i].take(j,axis=site_axis) for mi in MLs]) for j in xrange(hndim)],axes=[1,0,2])
-        ML.append(ai)
+    #ML,bms=[],[]
+    #for i in xrange(nsite):
+        #ai=transpose([block_diag(*[mi[i].take(j,axis=site_axis) for mi in MLs]) for j in xrange(hndim)],axes=[1,0,2])
+        #ML.append(ai)
+    ML=[tensor_block_diag(mis,axes=(2,) if i==0 else ((0,) if i==nsite-1 else (0,2))) for i,mis in enumerate(zip(*MLs))]
+    ##fix the ends
+    #ML[0]=ML[0].sum(axis=0)[newaxis,...]
+    #ML[-1]=ML[-1].sum(axis=2)[...,newaxis]
+
+    #get S matrix
     if l==0 or l==nsite:
         S=ones(1,dtype='complex128')
     else:
         S=ones(sum([len(mps.S) for mps in mpses]))
-    #fix the ends
-    ML[0]=ML[0].sum(axis=0)[newaxis,...]
-    ML[-1]=ML[-1].sum(axis=2)[...,newaxis]
-
-    
     return mPS(ML,l,S=S,labels=labels,bmg=mps0.bmg if hasattr(mps0,'bmg') else None)
 
 def _autoset_bms(TL,bmg,check_conflicts=False):
@@ -441,7 +442,7 @@ class MPS(MPSBase):
             if right:
                 A=self.ML[self.l-1].mul_axis(self.S,llink_axis)
                 if self.l==nsite:
-                    S=norm(A.ravel())
+                    S=sqrt((A**2).sum())
                     self.S=array([S])
                     self.ML[-1]=A/S
                     return 1-acc
@@ -449,7 +450,7 @@ class MPS(MPSBase):
             else:
                 B=self.ML[self.l].mul_axis(self.S,rlink_axis)
                 if self.l==0:
-                    S=norm(B.ravel())
+                    S=sqrt((B**2).sum())
                     self.S=array([S])
                     self.ML[0]=B/S
                     return 1-acc
@@ -474,7 +475,7 @@ class MPS(MPSBase):
 
             #unpermute blocked U,V and get c label
             if use_bm:
-                U,S,V=U.take(kpmask,axis=1)[argsort(pms[0])],S[kpmask],V.take(kpmask,axis=0)[:,argsort(pms[1])]
+                U,S,V=U.take(kpmask,axis=1).take(argsort(pms[0]),axis=0),S[kpmask],V.take(kpmask,axis=0).take(argsort(pms[1]),axis=1)
                 clabel=U.labels[1]
             else:
                 U,S,V=U[:,kpmask],S[kpmask],V[kpmask]
@@ -482,8 +483,8 @@ class MPS(MPSBase):
 
             #set datas
             self.S=S
-            self.ML[self.l-1]=Tensor(U.reshape([-1,hndim,U.shape[-1]]),labels=A.labels[:2]+[clabel])
-            self.ML[self.l]=Tensor(V.reshape([V.shape[0],hndim,-1]),labels=[clabel]+B.labels[1:])
+            self.ML[self.l-1]=U.split_axis(0,nlabels=A.labels[:2])
+            self.ML[self.l]=V.split_axis(1,nlabels=B.labels[1:])
         return 1-acc
 
     def use_bm(self,bmg,sharedata=True):

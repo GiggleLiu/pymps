@@ -61,6 +61,9 @@ class BTensor(TensorBase):
             s+='\n%s -> %s'%(blk,'x'.join(str(x) for x in data.shape))
         return s
 
+    def __abs__(self):
+        return BTensor(dict((key,abs(data)) for key,data in self.data.iteritems()),self.labels[:])
+
     def __mul__(self,target):
         if isinstance(target,BTensor):
             #1. get remaining axes - (raxes1, raxes2) and contracted axes - (caxes1, caxes2).
@@ -80,7 +83,8 @@ class BTensor(TensorBase):
                 for bj,dataj in target.data.iteritems():
                     if tuple(bi[ax] for ax in caxes1)==tuple(bj[ax] for ax in caxes2):
                         tblk=tuple(bi[ax] for ax in raxes1)+tuple(bj[ax] for ax in raxes2)
-                        ndata[tblk]=ndata.get(tblk,0)+np.tensordot(datai,dataj,axes=(caxes1,caxes2))
+                        val=np.tensordot(datai,dataj,axes=(caxes1,caxes2))
+                        ndata[tblk]=ndata[tblk]+val if ndata.has_key(tblk) else val
             return BTensor(ndata,labels=[lb1s[ax] for ax in raxes1]+[lb2s[ax] for ax in raxes2])
         elif isinstance(target,numbers.Number):
             return BTensor(dict((blk,target*data) for blk,data in self.data.iteritems()),self.labels[:])
@@ -114,6 +118,9 @@ class BTensor(TensorBase):
                 data/=target
         else:
             raise TypeError
+
+    def __pow__(self,target):
+        return BTensor(dict((key,data**target) for key,data in self.data.iteritems()),self.labels[:])
 
     @inherit_docstring_from(TensorBase)
     def todense(self):
@@ -158,6 +165,7 @@ class BTensor(TensorBase):
     def take(self,key,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
 
         #regenerate the labels,
         labels=self.labels[:]
@@ -172,6 +180,7 @@ class BTensor(TensorBase):
             t=BTensor(data=datas,labels=labels)
             return t
         elif np.ndim(key)==1:
+            key=np.asarray(key)
             #1d case, shrink one dimension.
             bm=self.labels[axis].bm
             if key.dtype=='bool':
@@ -196,6 +205,7 @@ class BTensor(TensorBase):
     def take_b(self,key,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
 
         #regenerate the labels,
         labels=self.labels[:]
@@ -267,8 +277,10 @@ class BTensor(TensorBase):
     def split_axis(self,axis,nlabels):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
         if not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
         dims=[lb.bm.N for lb in nlabels]
+
         #get new labels
         newlabels=self.labels[:axis]+nlabels+self.labels[axis+1:]
         #generate the new tensor
@@ -291,8 +303,10 @@ class BTensor(TensorBase):
     def split_axis_b(self,axis,nlabels):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
         if not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
         dims=[lb.bm.N for lb in nlabels]
+
         #get new labels
         newlabels=self.labels[:axis]+nlabels+self.labels[axis+1:]
         #get new datas, assume unity of blocks, not all axes can be split.
@@ -325,24 +339,21 @@ class BTensor(TensorBase):
         if axis is None:
             return sum([d.sum() for d in self.data.values()])
         elif isinstance(axis,int):
-            #0d case, delete a dimension.
-            lb=labels.pop(axis)
+            axis=(axis,)
+        if isinstance(axis,tuple):
+            axis=tuple(ax+self.ndim if ax<0 else ax for ax in axis)
             datas={}
             for bi,data in self.data.iteritems():
-                if bi[axis]==bid:
-                    datas[bi[:axis]+bi[axis+1:]]=data.sum(axis=axis)
-            t=BTensor(data=datas,labels=labels)
+                blk=tuple(b for i,b in enumerate(bi) if i not in axis)
+                datas[blk]=(datas[blk]+data.sum(axis=axis)) if datas.has_key(blk) else data.sum(axis=axis)
+            t=BTensor(data=datas,labels=[lb for i,lb in enumerate(self.labels) if i not in axis])
             return t
-        elif isinstance(axis,tuple):
-            bt=self
-            for ax in axis:
-                bt=bt.sum(ax)
         else:
             raise TypeError()
 
     @inherit_docstring_from(TensorBase)
     def get_block(self,block):
-        return self.data[block]
+        return self.data.get(block,np.zeros([lb.bm.blocksize(n) for lb,n in zip(self.labels,block)],dtype=self.dtype))
 
     def conj(self):
         '''Conjugate.'''
@@ -363,16 +374,30 @@ class BTensor(TensorBase):
         pms=[]
         labels=self.labels[:]
         if axes is None: axes=range(np.ndim(self))
-        for i in axes:
-            bm_new,info=labels[i].bm.sort(return_info=True)
-            bm_new=bm_new.compact_form()
-            labels[i]=labels[i].chbm(bm_new)
+        for axis in axes:
+            bm_new0,info=labels[axis].bm.sort(return_info=True)
+            bm_new,Nr=bm_new0.compact_form(return_info=True) #Nr is the grouping of blocks.
+            labels[axis]=labels[axis].chbm(bm_new)
             #reorder
             pm=info['pm_b']
-            if not np.allclose(pm,np.arange(len(pm))):
-                ts=ts.take_b(pm,axis=i)
+            apm=np.argsort(pm)
+            ndata={}
+            nr0=bm_new0.nr
+            for blk,data in ts.data.iteritems():
+                ind=apm[blk[axis]]
+                bid=np.searchsorted(Nr,ind+1)-1
+                nblk=blk[:axis]+(bid,)+blk[axis+1:]
+                if Nr[bid+1]-Nr[bid]!=1:
+                    N0=Nr[bid]
+                    iid=ind-N0
+                    if not ndata.has_key(nblk):
+                        ndata[nblk]=np.zeros([lb.bm.blocksize(bi) for bi,lb in zip(nblk,labels)],dtype=self.dtype)
+                    offset=sum(nr0[N0:N0+iid])
+                    ndata[nblk][(slice(None),)*axis+(slice(offset,offset+nr0[N0+iid]),)]=data
+                else:
+                    ndata[nblk]=(ndata[nblk]+data) if ndata.has_key(nblk) else data
             pms.append(pm)
-        ts.labels=labels
+            ts=BTensor(ndata,labels)
         if return_pm:
             return ts,pms
         else:

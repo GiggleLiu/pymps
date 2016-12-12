@@ -16,7 +16,8 @@ from tensor import tdot,Tensor,BLabel
 from btensor import BTensor
 
 __all__=['random_tensor','random_bbtensor','check_validity_tensor',
-        'gen_eincode','contract','random_btensor','svdbd','random_bdmatrix']
+        'gen_eincode','contract','random_btensor','svdbd','random_bdmatrix',
+        'tensor_block_diag']
 
 def gen_eincode(*labels):
     '''
@@ -207,15 +208,15 @@ def svdbd_map(A,mapping_rule=None,full_matrices=False):
             continue
         mi=extb2(extb1(A,(bm1.index_qn(lbi).item(),),axes=(0,)),(bm2.index_qn(lbj).item(),),axes=(1,))
         if mi.shape[0]==0 or mi.shape[1]==0:
-            ui,vi=zeros([mi.shape[0]]*2),zeros([mi.shape[1]]*2)
+            ui,vi=np.zeros([mi.shape[0]]*2),np.zeros([mi.shape[1]]*2)
             SL.append(sps.csr_matrix(tuple([mi.shape[0]]*2)))
             SL2.append(sps.csr_matrix(tuple([mi.shape[1]]*2)))
         else:
             ui,si,vi=svd(mi,full_matrices=full_matrices)
             if mi.shape[1]>mi.shape[0]:
-                si1,si2=si,append(si,zeros(mi.shape[1]-mi.shape[0]))
+                si1,si2=si,append(si,np.zeros(mi.shape[1]-mi.shape[0]))
             elif mi.shape[1]<mi.shape[0]:
-                si1,si2=append(si,zeros(mi.shape[0]-mi.shape[1])),si
+                si1,si2=append(si,np.zeros(mi.shape[0]-mi.shape[1])),si
             else:
                 si1=si2=si
             SL.append(sps.diags(si1,0))
@@ -311,3 +312,55 @@ def svdbd(A,cbond_str='X'):
     if A.shape[0]!=U.shape[0]:
         raise Exception('Error! 1. check block markers!')
     return U,S,V
+
+def tensor_block_diag(tensors,axes,nlabels=None):
+    '''
+    Tensor block diagonalization.
+    
+    Parameters:
+        :tensors: list, list of tensors(Tensor/BTensor).
+        :axes: tuple, target axes, tensor dimension in axes not in target axes should be identical.
+        :nlabels: list, strings for new labels.
+
+    Return:
+        tensor,
+    '''
+    ndim=tensors[0].ndim
+    axes=[axis if axis>=0 else axis+ndim for axis in axes]
+    if nlabels is None: nlabels=[tensors[0].labels[axi] for axi in axes]
+    #check uniform shape for remaining axes.
+    for i,lbs in enumerate(zip([t.labels for t in tensors])):
+        if i not in axes and not all([lb1.bm==lb2.bm for lb1,lb2 in zip(lbs[:-1],lbs[1:])]):
+            raise ValueError
+    #new labels
+    newlabel=tensors[0].labels[:]
+    for ax,nlb in zip(axes,nlabels):
+        if hasattr(newlabel[ax],'bm'):
+            newlabel[ax]=BLabel(nlb,reduce(lambda x,y:x+y,[ts.labels[ax].bm for ts in tensors]))
+        else:
+            newlabel[ax]=nlb
+
+    if isinstance(tensors[0],Tensor):
+        #get new shapes and offsets
+        shapes=array([t.shape for t in tensors])
+        ntensor,ndim=shapes.shape
+        offsets=np.concatenate([np.zeros([1,len(axes)],dtype='int32'),np.cumsum(shapes[:,axes],axis=0)],axis=0)
+        newshape=shapes[0]; newshape[axes]=offsets[-1]
+
+        ts=Tensor(np.zeros(newshape,dtype=tensors[0].dtype),labels=newlabel)
+        sls0=[slice(None)]*ndim
+        for it,t in enumerate(tensors):
+            sls=sls0[:]
+            for iax,ax in enumerate(axes):
+                sls[ax]=slice(offsets[it,iax],offsets[it+1,iax]) 
+            ts[sls]=t
+        return ts
+    elif isinstance(tensors[0],BTensor):
+        ndata={}
+        offset=np.zeros(ndim,dtype='int32')
+        for it,t in enumerate(tensors):
+            for i,(blk,data) in enumerate(t.data.iteritems()):
+                nblk=tuple(blk+offset)
+                ndata[nblk]=data
+            offset[axes]+=[t.labels[ax].bm.nblock for ax in axes]
+        return BTensor(ndata,newlabel)

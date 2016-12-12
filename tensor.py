@@ -27,7 +27,10 @@ class BLabel(str):
         return obj
 
     def __getnewargs__(self):
-        return (self.__class__,self.bm)
+        return (str(self),self.bm)
+
+    def __getstate__(self):
+        pass
 
     def __copy__(self):
         return BLabel(self,self.bm)
@@ -451,7 +454,7 @@ class Tensor(np.ndarray,TensorBase):
         #detect and extract datas.
         for blk in itertools.product(*[range(bm.nblock) for bm in bms]):
             datai=self[tuple(bm.get_slice(i) for bm,i in zip(bms,blk))]
-            if not np.allclose(datai,0):
+            if not np.allclose(datai,0,atol=ZERO_REF):
                 data[blk]=datai
         from btensor import BTensor
         return BTensor(data,self.labels[:])
