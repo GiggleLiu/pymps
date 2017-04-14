@@ -3,8 +3,9 @@ Utilities for commute and anti-commute, and broadcastable dot.
 '''
 
 from numpy import *
+from numpy.linalg import norm
 from scipy import sparse as sps
-from scipy.linalg import norm,svd
+from scipy.linalg import norm,svd,lu
 from scipy.sparse.linalg import LinearOperator
 import cPickle as pickle
 import pdb
@@ -106,3 +107,10 @@ def quickload(filename):
     obj=pickle.load(f)
     f.close()
     return obj
+
+def ldu(A):
+    '''LDU decomposition.'''
+    L,U=lu(A,permute_l=True)
+    D=norm(U,axis=1)
+    U=U/D[:,newaxis]
+    return L,D,U

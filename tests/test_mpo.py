@@ -13,9 +13,11 @@ from copy import deepcopy
 from blockmatrix import SimpleBMG
 from plotlib import show_mpo
 
+random.seed(10)
+
 class TestMPO():
     def __init__(self):
-        spaceconfig=SpinSpaceConfig([2,1])
+        spaceconfig=SpinSpaceConfig([1,2])
         #generator WL
         hndim=2
         nsite=8
@@ -76,7 +78,7 @@ class TestMPO():
 
 class TestBMPO():
     def __init__(self):
-        spaceconfig=SpinSpaceConfig([2,1])
+        spaceconfig=SpinSpaceConfig([1,2])
         bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='M')
         print 'Testing for random <BMPO>'
         self.mpo=random_bmpo(nsite=8,bmg=bmg)

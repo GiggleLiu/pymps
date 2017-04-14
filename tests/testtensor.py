@@ -303,7 +303,7 @@ def test_tensor():
 def test_btensor():
     print 'Testing Blocked dense Tensor.'
     print 'test for generation.'
-    spaceconfig=SuperSpaceConfig([2,1,1])
+    spaceconfig=SuperSpaceConfig([1,2,1])
     bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='QM')
     bms1=[bmg.random_bm(nsite=i) for i in [3,1,3]]
     bms2=[bmg.random_bm(nsite=i) for i in [1,3,4]]
@@ -335,7 +335,7 @@ def test_btensor():
     blk=ts1.get_block(bs)
     assert_allclose(blk.shape,[lb.bm.blocksize(ib) for ib,lb in zip(bs,ts1.labels)])
     #test merge axes
-    spaceconfig=SuperSpaceConfig([2,1,1])
+    spaceconfig=SuperSpaceConfig([1,2,1])
     bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='QM')
     tsm=ts1.merge_axes(sls=slice(1,3),bmg=bmg)
     assert_((tsm.labels[0].bm.N,tsm.labels[1].bm.N)==tsm.shape)
@@ -344,7 +344,7 @@ def test_btensor():
 def test_svdbd():
     '''Test for function svdbd'''
     print 'Test svdbd'
-    spaceconfig=SuperSpaceConfig([2,1,1])
+    spaceconfig=SuperSpaceConfig([1,2,1])
     bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='QM')
     bms=[bmg.random_bm(nsite=i) for i in [3,4]]
     ts=random_btensor(bms=bms,label_strs=['B','A'])
@@ -372,8 +372,8 @@ def test_blabel():
 
     print 'test pickle BLabel'
     fn='test_save_blabel.dat'
-    quicksave(fn,bl)
-    bl3=quickload(fn)
+    quicksave(fn,[bl])
+    bl3=quickload(fn)[0]
     assert_(bl==bl3 and bl.bm==bl3.bm)
 
     print 'test copy BLabel'

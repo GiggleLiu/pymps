@@ -23,7 +23,7 @@ class MPSTest(object):
     '''Tests for MPS.'''
     def __init__(self):
         nsite=10
-        bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([2,1]),qstring='M')
+        bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([1,2]),qstring='M')
         mps=random_bmps(bmg=bmg,nsite=nsite,maxN=10)
         print 'Checking the validity!'
         assert_(check_validity_mps(mps))

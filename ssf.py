@@ -202,6 +202,7 @@ def SSFLR(kets,direction):
     '''
     bra=kets[0].tobra(labels=[kets[0].labels[0],kets[0].labels[1]+'\''])
     ket=kets[1]
+    nsite=ket.nsite
     if direction=='->':
         [keti<<keti.l-1 for keti in [bra,ket]]
         step=1
@@ -212,12 +213,12 @@ def SSFLR(kets,direction):
         step=-1
         clink_axis=kets[0].rlink_axis
         attach_S='B'
-        [keti>>keti.nsite-1-keti.l for keti in [bra,ket]]
-        edge_labels=[bra.BL[-1].labels[clink_axis],ket.BL[-1].labels[clink_axis]]
+        [keti>>nsite-1-keti.l for keti in [bra,ket]]
+        edge_labels=[bra.get(nsite-1).labels[clink_axis],ket.get(nsite-1).labels[clink_axis]]
     Ri=tensor.Tensor(identity(1),labels=edge_labels)
     fs=[1]
-    for i in xrange(ket.nsite):
-        sitei=i if direction=='->' else ket.nsite-i-1
+    for i in xrange(nsite):
+        sitei=i if direction=='->' else nsite-i-1
         Ri=(bra.get(sitei,attach_S=attach_S)*Ri*ket.get(sitei,attach_S=attach_S))
         S=svdvals(Ri)
         fs.append(sum(S))

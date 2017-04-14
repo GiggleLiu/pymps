@@ -21,7 +21,7 @@ def getmps():
 
 def getbmps():
     nsite=10
-    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([2,1]),qstring='M')
+    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([1,2]),qstring='M')
     mps=random_bmps(bmg=bmg,nsite=nsite,maxN=10)
     return mps
 

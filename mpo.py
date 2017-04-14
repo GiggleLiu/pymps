@@ -5,7 +5,7 @@ Matrix Product State.
 from numpy import *
 from scipy.linalg import svd,qr,rq,norm
 from scipy import sparse as sps
-import cPickle as pickle
+from abc import ABCMeta, abstractmethod
 import copy
 import pdb,time,warnings,numbers
 
@@ -112,6 +112,8 @@ class OpUnit(object):
                 res=OpUnit(self.label,self.data,self.siteindex,self.factor,math_str=self.__math_str__,fermionic=self.fermionic)
                 res.factor*=target
                 return res
+        elif isinstance(target,OpUnitI):
+            return copy.copy(self)
         elif isinstance(target,OpUnit):
             if target.siteindex!=self.siteindex:
                 res=OpString([self])
@@ -253,7 +255,7 @@ class OpUnit(object):
             factor_str=''
         else:
             factor_str=format(factor,'.3f').rstrip('0').rstrip('.')
-        return r'$%s{%s}$$_{%s}$'%(factor_str,self.__math_str__,self.siteindex)
+        return r'$%s{%s}(%s)}$'%(factor_str,self.__math_str__,self.siteindex)
 
     def get_data(self,dense=True):
         '''
@@ -910,7 +912,77 @@ class MPOConstructor(object):
         WL[-1]=WL[-1][:,-1:]
         return WL2MPO(WL)
 
-class MPO(object):
+class MPOBase(object):
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def get(self,i):
+        '''
+        Get the operator tensor at specific site.
+
+        Parameters:
+            :i: int, the site index.
+
+        Return:
+            4-leg <Tensor>,
+        '''
+        pass
+
+    @abstractmethod
+    def eliminate_zeros(self):
+        '''Eliminate zero elements.'''
+        pass
+
+    @abstractmethod
+    def get_all(self):
+        '''
+        Get all tensors in a train.
+        '''
+        pass
+
+    @abstractmethod
+    def check_link(self):
+        '''
+        The bond dimension for l-th link.
+
+        Parameters:
+            :l: int, the bond index.
+
+        Return:
+            int, the bond dimension.
+        '''
+        pass
+
+    @abstractmethod
+    def chlabel(self):
+        '''
+        Change the label of specific axis.
+        
+        Parameters:
+            :labels: list, the new labels.
+                * 'site1' -> The on-site freedom, the first dimension.
+                * 'site2' -> The on-site freedom, the second dimension.
+                * 'link' -> The label of the links.
+        '''
+        pass
+
+    @abstractmethod
+    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernal='svd'):
+        '''
+        Move l-index by one with specific direction.
+        
+        Parameters:
+            :niter: int, number of iteractions.
+            :tol: float, the tolerence for compression.
+            :maxN: int, the maximum dimension.
+            :kernel: 'svd'/'ldu', the compressing kernel.
+
+        Return:
+            float, approximate truncation error.
+        '''
+        pass
+
+class MPO(MPOBase):
     '''
     Matrix product operator.
 
@@ -969,6 +1041,10 @@ class MPO(object):
         H=H.chorder(range(1,self.nsite*2+2,2)+range(0,self.nsite*2+2,2))
         return asarray(H.reshape([dim,dim]))
 
+    @property
+    def nnz(self):
+        return sum([sum(o!=0) for o in self.OL])
+
     def use_bm(self,bmg):
         '''
         Use <BlockMarker> to indicate block structure.
@@ -981,44 +1057,21 @@ class MPO(object):
         '''
         return BMPO(self.OL[:],labels=self.labels[:],bmg=bmg)
 
+    def eliminate_zeros(self,tol=1e-8):
+        for o in self.OL:
+            o[abs(o)<tol]=0
+        return self
+
     def get(self,i,*args,**kwargs):
-        '''
-        Get the operator tensor at specific site.
-
-        Parameters:
-            :i: int, the site index.
-
-        Return:
-            4-leg <Tensor>,
-        '''
         return self.OL[i]
 
     def set(self,i,A,*args,**kwargs):
-        '''
-        Get the matrix for specific site.
-
-        Parameters:
-            :i: int, the index of site.
-            :A: <Tensor>, the data
-        '''
         self.OL[i]=A
 
     def get_all(self):
-        '''
-        Get the concatenation of A and B sectors.
-        '''
         return self.OL[:]
  
     def check_link(self,l):
-        '''
-        The bond dimension for l-th link.
-
-        Parameters:
-            :l: int, the bond index.
-
-        Return:
-            int, the bond dimension.
-        '''
         sites=self.OL
         if l==self.nsite:
             return sites[-1].shape[self.rlink_axis]
@@ -1028,15 +1081,6 @@ class MPO(object):
             raise ValueError('Link index out of range!')
 
     def chlabel(self,labels):
-        '''
-        Change the label of specific axis.
-        
-        Parameters:
-            :labels: list, the new labels.
-                * 'site1' -> The on-site freedom, the first dimension.
-                * 'site2' -> The on-site freedom, the second dimension.
-                * 'link' -> The label of the links.
-        '''
         nsite=self.nsite
         self.labels=labels
         slabel1,slabel2,llabel=labels
@@ -1046,18 +1090,7 @@ class MPO(object):
             ai.labels[2]='%s_%s'%(slabel2,l)
             ai.labels[3]='%s_%s'%(llabel,l+1)
 
-    def compress(self,niter=2,tol=ZERO_REF,maxN=Inf):
-        '''
-        Move l-index by one with specific direction.
-        
-        Parameters:
-            :niter: int, number of iteractions.
-            :tol: float, the tolerence for compression.
-            :maxN: int, the maximum dimension.
-
-        Return:
-            float, approximate truncation error.
-        '''
+    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernal='svd'):
         nsite=self.nsite
         hndim=self.hndim
         use_bm=hasattr(self,'bmg')
@@ -1083,7 +1116,7 @@ class MPO(object):
                 if use_bm:
                     AB=AB.merge_axes(bmg=self.bmg,sls=slice(0,3),signs=[1,1,-1]).merge_axes(bmg=self.bmg,sls=slice(1,4),signs=[-1,1,1])
                     AB,pms=AB.b_reorder(return_pm=True)
-                    U,S,V=svdbd(AB,cbond_str=cbond_str)
+                    U,S,V=svdbd(AB,cbond_str=cbond_str,kernal=kernal)
                 else:
                     AB=AB.reshape([-1,prod(AB.shape[3:])])
                     U,S,V=svd(AB,full_matrices=False)
@@ -1101,6 +1134,11 @@ class MPO(object):
                 else:
                     U,S,V=U[:,kpmask],S[kpmask],V[kpmask]
                     clabel=cbond_str
+                nS=norm(S); S/=nS
+                if right:
+                    U*=nS
+                else:
+                    V*=nS
                 if iit==niter-1 and ((right and l==nsite-1) or (not right and l==1)):  #stop condition.
                     print 'Compression of MPO Done!'
                     U=U*S
@@ -1131,15 +1169,6 @@ class BMPO(MPO):
         return MPO(self.OL[:],labels=self.labels[:])
 
     def chlabel(self,labels):
-        '''
-        Change the label of specific axis.
-        
-        Parameters:
-            :labels: list, the new labels.
-                * 'site1' -> The on-site freedom, the first dimension.
-                * 'site2' -> The on-site freedom, the second dimension.
-                * 'link' -> The label of the links.
-        '''
         nsite=self.nsite
         self.labels=labels
         slabel1,slabel2,llabel=labels
@@ -1148,6 +1177,65 @@ class BMPO(MPO):
             ai.labels[1].chstr('%s_%s'%(slabel1,l)),
             ai.labels[2].chstr('%s_%s'%(slabel2,l)),
             ai.labels[3].chstr('%s_%s'%(llabel,l+1))]
+
+class PMPO(MPOBase):
+    '''
+    Periodic MPO with block structure.
+
+    Attributes:
+        :OP: Periodic structure of MPO
+        :OH: Headers of MPO
+    '''
+    def __init__(self,OP,nsite,OH=None,labels=["m","s",'b']):
+        self.OP=OP
+        self.OH=OH
+        self.labels=labels
+        self.nsite=nsite
+
+    @property
+    def hndim(self):
+        return self.OP.shape[1]
+
+    @property
+    def nnz(self):
+        return sum(self.OP!=0)
+
+    @property
+    def H(self):
+        raise NotImplementedError()
+
+    def get(self,l):
+        l=l%self.nsite
+        if l==0 and self.OH is not None:
+            T=self.OH[0]
+        elif l==self.nsite-1 and self.OH is not None:
+            T=self.OH[-1]
+        else:
+            T=self.OP
+
+        slabel1,slabel2,llabel=self.labels
+        labels=['%s_%s'%(llabel,l),
+            '%s_%s'%(slabel1,l),
+            '%s_%s'%(slabel2,l),
+            '%s_%s'%(llabel,l+1)]
+        return Tensor(T,labels=labels)
+
+    def eliminate_zeros(self,tol=1e-8):
+        for O in [self.OP]+self.OH:
+            O[abs(O)<tol]=0
+        return self
+
+    def set(self,l,A):
+        self.get(l)[...]=A
+
+    def check_link(self,l):
+        l=l%self.nsite
+        if l==0: return self.OH[0].shape[0]
+        elif l==self.nsite-1: return self.OH[-1].shape[-1]
+        else: return self.OP.shape[0]
+
+    def chlabel(self,labels):
+        self.labels=labels
 
 class OpUnitI(OpUnit):
     '''
@@ -1167,6 +1255,10 @@ class OpUnitI(OpUnit):
     def __mul__(self,target):
         if isinstance(target,OpUnit) and target.siteindex==self.siteindex:
             return copy.copy(target)
+        if isinstance(target,numbers.Number):
+            res=copy.copy(self)
+            res.factor*=target
+            return res
         else:
             return super(OpUnitI,self).__mul__(target)
 

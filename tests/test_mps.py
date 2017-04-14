@@ -253,7 +253,7 @@ def test_prodmps():
     assert_allclose(vec,mps.state,atol=1e-8)
 
     print 'test using block markers'
-    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([2,1]),qstring='M')
+    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([1,2]),qstring='M')
     mps_b=product_state(config,hndim,bmg=bmg)
     mps_b0=product_state(config,hndim)
     assert_(check_validity_mps(mps_b0))
@@ -275,7 +275,7 @@ def test_random_mps():
     print 'Testing for generating random mps.'
     mps=random_mps(hndim=2,nsite=10,maxN=20)
     print 'Testing Using a block marker.'
-    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([2,1]),qstring='M')
+    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([1,2]),qstring='M')
     bmps=mps.use_bm(bmg)
     assert_(check_validity_mps(mps))
 

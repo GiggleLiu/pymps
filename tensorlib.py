@@ -13,6 +13,7 @@ from abc import ABCMeta, abstractmethod
 from tba.hgen import c2ind,SuperSpaceConfig,inherit_docstring_from
 from blockmatrix import block_diag,SimpleBMG,BlockMarker
 from tensor import tdot,Tensor,BLabel
+from utils import ldu
 from btensor import BTensor
 
 __all__=['random_tensor','random_bbtensor','check_validity_tensor',
@@ -72,7 +73,7 @@ def random_bbtensor(sites=None,labels=None,nnzblock=100):
     Return:
         <BTensor>
     '''
-    spaceconfig=SuperSpaceConfig([2,1,1])
+    spaceconfig=SuperSpaceConfig([1,2,1])
     #get block markers
     if sites is None:
         sites=[2,3,4]
@@ -212,7 +213,7 @@ def svdbd_map(A,mapping_rule=None,full_matrices=False):
             SL.append(sps.csr_matrix(tuple([mi.shape[0]]*2)))
             SL2.append(sps.csr_matrix(tuple([mi.shape[1]]*2)))
         else:
-            ui,si,vi=svd(mi,full_matrices=full_matrices)
+            ui,si,vi=svd(mi,full_matrices=full_matrices,lapack_driver='gesvd')
             if mi.shape[1]>mi.shape[0]:
                 si1,si2=si,append(si,np.zeros(mi.shape[1]-mi.shape[0]))
             elif mi.shape[1]<mi.shape[0]:
@@ -245,13 +246,14 @@ def svdbd_map(A,mapping_rule=None,full_matrices=False):
     VL=array(VL)[order]
     return block_diag(*UL),array(sps.bmat(Smat)),block_diag(*VL),array(sps.bmat(Smat2))
 
-def svdbd(A,cbond_str='X'):
+def svdbd(A,cbond_str='X',kernal='svd'):
     '''
     Get the svd decomposition for dense tensor with block structure.
 
     Parameters:
         :A: 2D<Tensor>, the input matrix, with <BLabel>s.
-        :cbond_str: the labes string for center bond.
+        :cbond_str: str, the labes string for center bond.
+        :kernal: 'svd'/'ldu', the kernal of svd decomposition.
 
     Return:
         (U,S,V) that U*S*V = A
@@ -260,7 +262,12 @@ def svdbd(A,cbond_str='X'):
     bm1,bm2=A.labels[0].bm,A.labels[1].bm
     #add support for null block marker
     if bm1.qns.shape[1]==0:
-        U,S,V=svd(A,full_matrices=False)
+        if kernal=='svd':
+            U,S,V=svd(A,full_matrices=False,lapack_driver='gesvd')
+        elif kernal=='ldu':
+            U,S,V=ldu(A)
+        else:
+            raise ValueError()
         center_label=BLabel(cbond_str,BlockMarker(qns=np.zeros([1,0],dtype='int32'),Nr=array([0,len(S)])))
         U=Tensor(U,labels=[A.labels[0].bm,center_label])
         V=Tensor(V,labels=[center_label,A.labels[1].bm])
@@ -277,7 +284,12 @@ def svdbd(A,cbond_str='X'):
     UL,SL,VL=[],[],[]
     for c1,c2 in zip(cqns1,cqns2):
         cell=A.get_block((c1,c2))
-        Ui,Si,Vi=svd(cell,full_matrices=False)
+        if kernal=='svd':
+            Ui,Si,Vi=svd(cell,full_matrices=False,lapack_driver='gesvd')
+        elif kernal=='ldu':
+            Ui,Si,Vi=ldu(cell)
+        else:
+            raise ValueError()
         UL.append(Ui); SL.append(Si); VL.append(Vi)
 
     #get center BLabel and S

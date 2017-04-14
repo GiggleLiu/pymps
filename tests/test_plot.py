@@ -10,16 +10,16 @@ from plotlib import *
 def test_drawketbra():
     ion()
     for i in xrange(5):
-        draw_kb(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.,is_ket=True)
-        draw_kb(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.2,is_ket=False)
+        draw_kb(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.,flowmask=[1]*3,is_ket=True)
+        draw_kb(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.2,flowmask=[1]*3,is_ket=False)
     axis('equal')
 
 def test_drawtensor():
     ion()
     leginfo=[('a',pi),('b',-0.5*pi),('c',0)]
     for i in xrange(5):
-        draw_tensor(i*2,2,legs=[('$%s_%s$'%(tk,i),pi/10*i+dth) for tk,dth in leginfo],legmask=[True,True,True],hatch=None,zoom=1.,ax=None)
-        draw_tensor(i*2,5,legs=[('$%s_%s$'%(tk,i),-pi/10*i+dth) for tk,dth in leginfo],legmask=[True,False,True],hatch='///',zoom=1.2,ax=None)
+        draw_tensor(i*2,2,legs=[('$%s_%s$'%(tk,i),pi/10*i+dth) for tk,dth in leginfo],flowmask=[1]*3,legmask=[True,True,True],hatch=None,zoom=1.,ax=None)
+        draw_tensor(i*2,5,legs=[('$%s_%s$'%(tk,i),-pi/10*i+dth) for tk,dth in leginfo],flowmask=[1]*3,legmask=[True,False,True],hatch='///',zoom=1.2,ax=None)
     axis('equal')
 
 def test_drawts():
@@ -31,16 +31,24 @@ def test_drawts():
 def test_drawtri():
     ion()
     for i in xrange(5):
-        draw_tri(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.,rotate=0)
-        draw_tri(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.2,rotate=i/6.*pi)
+        draw_tri(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.,flowmask=[1]*3,rotate=0)
+        draw_tri(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i],zoom=1.2,flowmask=[1]*3,rotate=i/6.*pi)
     axis('equal')
 
 def test_drawsq():
     ion()
     for i in xrange(5):
-        draw_sq(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[True,True,False,False],zoom=1.)
-        draw_sq(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[False,True,True,True],zoom=1.2)
+        draw_sq(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[True,True,False,False],flowmask=[1]*4,zoom=1.)
+        draw_sq(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[False,True,True,True],flowmask=[1]*4,zoom=1.2)
     axis('equal')
+
+def test_drawdiamond():
+    ion()
+    for i in xrange(5):
+        draw_diamond(i,2,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[True,True,False,False],flowmask=[1]*4,zoom=1.)
+        draw_diamond(i,5,labels=['$a_%s$'%i,'$b_%s$'%i,'$c_%s$'%i,''],legmask=[False,True,True,True],flowmask=[1]*4,zoom=1.2)
+    axis('equal')
+
 
 def test_mixture():
     legsize=16
@@ -111,8 +119,12 @@ def test_mixture():
     gs.tight_layout(fig)
 
 def test_all():
+    test_drawdiamond()
+    pause(1)
+    cla()
     test_drawketbra()
     pause(1)
+    pdb.set_trace()
     cla()
     test_drawts()
     pause(1)

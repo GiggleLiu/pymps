@@ -274,7 +274,7 @@ class BTensor(TensorBase):
         return BTensor(ndata,labels=newlabels)
 
     @inherit_docstring_from(TensorBase)
-    def split_axis(self,axis,nlabels):
+    def split_axis(self,axis,nlabels,**kwargs):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
         if axis<0: axis+=self.ndim
@@ -300,7 +300,7 @@ class BTensor(TensorBase):
                 ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.take(ii,axis).reshape(data.shape[:axis]+(1,)*len(nlabels)+data.shape[axis+1:])
         return BTensor(ndata,labels=newlabels)
 
-    def split_axis_b(self,axis,nlabels):
+    def split_axis_b(self,axis,nlabels,**kwargs):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
         if axis<0: axis+=self.ndim

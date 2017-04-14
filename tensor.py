@@ -32,11 +32,11 @@ class BLabel(str):
     def __getstate__(self):
         pass
 
-    def __copy__(self):
-        return BLabel(self,self.bm)
+    #def __copy__(self):
+    #    return BLabel(self,self.bm)
 
-    def __deepcopy__(self, memo):
-        return BLabel(self,copy.deepcopy(self.bm))
+#    def __deepcopy__(self, memo):
+#        return BLabel(self,copy.deepcopy(self.bm))
 
     def chbm(self,bm):
         '''Get a new <BLabel> with different block marker.'''

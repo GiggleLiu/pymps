@@ -57,6 +57,48 @@ def _mps_sum(mpses,labels=('s','a')):
         S=ones(sum([len(mps.S) for mps in mpses]))
     return mPS(ML,l,S=S,labels=labels,bmg=mps0.bmg if hasattr(mps0,'bmg') else None)
 
+
+def _determine_flow(ts,bmg,signs,check_conflicts=False):
+    '''
+    Determine the flow for one axis of a tensor.
+
+    Parameters:
+        :ts: <Tensor>,
+        :bmg: <BlockMarkerGenerator>,
+        :signs: 1d array, the flow directions of tensors.
+        :check_conflicts: bool, detect the conflicts in tensor, to filter out tensors without specific good quantum number.
+
+    Return:
+        <Tensor>, the new tensor, with the remainning axis determined.
+    '''
+    #find the un-determined axis.
+    which=where([not isinstance(lb,BLabel) for lb in ts.labels])[0][0]
+
+    #get the matrix of Quantum number
+    QNS=zeros(ts.shape+(bmg.qns1.shape[-1],),dtype=bmg.qns1.dtype)
+    for i,(lb,sign) in enumerate(zip(ts.labels,signs)):
+        if i!=which:
+            QNS=QNS+sign*lb.bm.inflate().qns[[slice(None)]+[newaxis]*(ts.ndim-1-i)]
+    QNS=bmg.trim_qns(-QNS*sign)
+
+    #get quantum numbers using non-zero elements of tensors.
+    mask=ts!=0
+    QNS[~mask]=0
+    raxes=tuple(range(which)+range(which+1,ts.ndim))
+    qns=QNS.sum(axis=raxes,dtype=QNS.dtype)
+    qns/=mask.sum(axis=raxes)[:,newaxis]
+
+    #detect conflicts!
+    if check_conflicts:
+        for i in xrange(len(qns)):
+            qni=QNS.take(i,axis=which)[ts.take(i,axis=which)!=0]
+            if any(qns[i]!=qni):
+                raise ValueError()
+
+    bmr=BlockMarker(Nr=arange(ts.shape[which]+1),qns=qns)
+    ts.labels[which]=BLabel(ts.labels[which],bmr)
+    return ts
+
 def _autoset_bms(TL,bmg,check_conflicts=False):
     '''
     Auto setup blockmarkers for <MPS> and <MPO>.
@@ -77,36 +119,18 @@ def _autoset_bms(TL,bmg,check_conflicts=False):
         #cell is a tensor tensor(al,sup,ar), first permute left axes to match the transformation of block marker
         cell=TL[i][pm]
         #get bml
-        bml=bmr if i!=0 else bmg.bm0
+        bml=TL[i-1].labels[-1].bm if i!=0 else bmg.bm0
+
         #setup left, site labels.
         cell.labels[:2]=[
                 BLabel(cell.labels[0],bml),
                 BLabel(cell.labels[1],bm1)]
-        if not is_mps:
-            cell.labels[2]=BLabel(cell.labels[2],bm1)
-            #merge left&site1&site2 labels, in order to get the good quantum number flow to right.
-            cell_flat=cell.merge_axes(slice(0,3),signs=[1,1,-1],bmg=bmg)
-        else:
-            #merge left&site labels, in order to get the good quantum number flow to right.
-            cell_flat=cell.merge_axes(slice(0,2),signs=[1,1],bmg=bmg)
-        x,y=where(cell_flat)
-        bmlc=cell_flat.labels[0].bm  #the block label for each dimension of row
-        qns=zeros([cell_flat.shape[1],bml.qns.shape[-1]],dtype=bm1.qns.dtype)
+        if not is_mps: cell.labels[2]=BLabel(cell.labels[2],bm1)
+
         #get bmr
-        #detect conflicts!
-        if check_conflicts:
-            for xi,yi in zip(x,y):
-                if any(qns[yi]!=0) and any(qns[yi]!=bmlc.qns[xi]):
-                    print 'Conflict check failed!'
-                    pdb.set_trace()
-                else:
-                    qns[yi]=bmlc.qns[xi]
-        else:
-            qns[y]=bmlc.qns[x]
-        bmr,info=BlockMarker(Nr=arange(cell_flat.shape[1]+1),qns=qns).sort(return_info=True); pm=info['pm']
-        bmr=bmr.compact_form()
-        cell=cell[...,pm]
-        cell.labels[-1]=BLabel(cell.labels[-1],bmr)
+        _determine_flow(cell,bmg,signs=[1,1,-1] if is_mps else [1,1,-1,-1],check_conflicts=check_conflicts)
+        cell,(pm,)=cell.b_reorder(axes=(-1,),return_pm=True)
+
         TL[i]=cell
     return TL
 
@@ -476,15 +500,12 @@ class MPS(MPSBase):
             #unpermute blocked U,V and get c label
             if use_bm:
                 U,S,V=U.take(kpmask,axis=1).take(argsort(pms[0]),axis=0),S[kpmask],V.take(kpmask,axis=0).take(argsort(pms[1]),axis=1)
-                clabel=U.labels[1]
             else:
-                U,S,V=U[:,kpmask],S[kpmask],V[kpmask]
-                clabel=cbond_str
-
+                U,S,V=Tensor(U[:,kpmask],labels=[A.labels[0],cbond_str]),S[kpmask],Tensor(V[kpmask],[cbond_str,B.labels[-1]])
             #set datas
             self.S=S
-            self.ML[self.l-1]=U.split_axis(0,nlabels=A.labels[:2])
-            self.ML[self.l]=V.split_axis(1,nlabels=B.labels[1:])
+            self.ML[self.l-1]=U.split_axis(0,nlabels=A.labels[:2],dims=A.shape[:2])
+            self.ML[self.l]=V.split_axis(1,nlabels=B.labels[1:],dims=B.shape[1:])
         return 1-acc
 
     def use_bm(self,bmg,sharedata=True):
@@ -498,7 +519,7 @@ class MPS(MPSBase):
         Return:
             <BMPS>,
         '''
-        mps=BMPS([ai.make_copy(copydata=not sharedata) for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=not sharedata) for ai in self.ML],self.l,\
                 self.S if sharedata else self.S[...],is_ket=self.is_ket,labels=self.labels[:],bmg=bmg)
         return mps
 
@@ -507,7 +528,7 @@ class MPS(MPSBase):
         if labels is None:
             labels=self.labels[:]
 
-        mps=MPS([ai.make_copy(copydata=False) if self.is_ket else ai.conj() for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=False) if self.is_ket else ai.conj() for ai in self.ML],self.l,\
                 self.S if self.is_ket else self.S.conj(),is_ket=True,labels=labels)
         return mps
 
@@ -517,7 +538,7 @@ class MPS(MPSBase):
         if labels is None:
             labels=self.labels[:]
 
-        mps=MPS([ai.make_copy(copydata=False) if not self.is_ket else ai.conj() for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=False) if not self.is_ket else ai.conj() for ai in self.ML],self.l,\
                 self.S if not self.is_ket else self.S.conj(),is_ket=False,labels=labels)
         return mps
 
@@ -658,7 +679,7 @@ class BMPS(MPS):
         Return:
             <MPS>,
         '''
-        mps=MPS([ai.make_copy(copydata=not sharedata) for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=not sharedata) for ai in self.ML],self.l,\
                 self.S if sharedata else self.S[...],is_ket=self.is_ket,labels=self.labels[:])
         return mps
 
@@ -667,7 +688,7 @@ class BMPS(MPS):
         if labels is None:
             labels=self.labels[:]
 
-        mps=BMPS([ai.make_copy(copydata=False) if self.is_ket else ai.conj() for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=False) if self.is_ket else ai.conj() for ai in self.ML],self.l,\
                 self.S if self.is_ket else self.S.conj(),is_ket=True,labels=labels,bmg=self.bmg)
         return mps
 
@@ -676,7 +697,7 @@ class BMPS(MPS):
         if labels is None:
             labels=self.labels[:]
 
-        mps=BMPS([ai.make_copy(copydata=False) if not self.is_ket else ai.conj() for ai in self.ML],self.l,\
+        mps=mPS([ai.make_copy(copydata=False) if not self.is_ket else ai.conj() for ai in self.ML],self.l,\
                 self.S if not self.is_ket else self.S.conj(),is_ket=False,labels=labels,bmg=self.bmg)
         return mps
 

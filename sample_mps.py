@@ -17,7 +17,7 @@ from contraction import get_expect
 ########### Generate 2 random kets ######
 #the single site Hilbert space config(Fermiononic),
 #2 spin, 1 atom, 1 orbital in a unit cell.
-spaceconfig=SuperSpaceConfig([2,1,1])
+spaceconfig=SuperSpaceConfig([1,2,1])
 #generate 2 random mpses of 10 site and chi = 20/30,
 kA=random_mps(hndim=spaceconfig.hndim,nsite=10,maxN=20)
 kB=random_mps(hndim=spaceconfig.hndim,nsite=10,maxN=30)

@@ -19,7 +19,7 @@ from contraction import *
 from mps import MPS
 from contraction import Contractor
 from pydavidson import gs
-from utils import fast_svd
+from utils import fast_svd,ldu
 from blockmatrix import SimpleBMG
 
 def test_fastsvd():
@@ -47,5 +47,13 @@ def test_fastsvd():
     assert_allclose(A,(Uf*Sf).dot(Vf),atol=1e-6)
     print 'Elapse -> %s(old->%s) tol->%s'%(t1-t0,t2-t1,norm(Sf-S0))
 
+def test_ldu():
+    A=random.random([10,10])
+    L,D,U=ldu(A)
+    assert_allclose((L*D).dot(U),A,atol=1e-8)
+    assert_(sum(abs(L>1e-8))<=55)
+    assert_(sum(abs(U>1e-8))<=55)
+
 if __name__=='__main__':
+    test_ldu()
     test_fastsvd()

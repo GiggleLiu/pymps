@@ -3,11 +3,12 @@ from matplotlib.pyplot import *
 from matplotlib import patches
 from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d import Axes3D
+from mpo import OpString,OpUnit,OpCollection
 from numpy import *
 from numpy.linalg import norm
 import pdb
 
-__all__=['draw_tensor','draw_kb','draw_rect','draw_tri','draw_sq','plot_params','show_contract_route']
+__all__=['draw_tensor','draw_kb','draw_rect','draw_tri','draw_sq','plot_params','show_contract_route','draw_diamond']
 
 plot_params=dict(
         legcolor='k',     #the color of legs.
@@ -23,7 +24,7 @@ def rotate_leg(vec,theta):
     mat=array([[cos(theta),-sin(theta)],[sin(theta),cos(theta)]])
     return mat.dot(transpose(vec)).T
 
-def _plot_textedline(pos1,pos2,label,color=None,fontsize=None,ax=None):
+def _plot_textedline(pos1,pos2,label,arrow_direction=0,color=None,fontsize=None,ax=None):
     pos1,pos2=asarray(pos1),asarray(pos2)
     leg_fontsize,legw,legcolor,textoffset,leglength=plot_params['leg_fontsize'],plot_params['legw'],\
             plot_params['legcolor'],plot_params['textoffset'],plot_params['leglength']
@@ -35,6 +36,11 @@ def _plot_textedline(pos1,pos2,label,color=None,fontsize=None,ax=None):
     #add a text.
     xy=(pos1+pos2)/2.+textoffset*array([-vec[1],vec[0]])/norm(vec)  #move towards the vertical direction.
     ax.annotate(label,xytext=xy,xy=xy,va='center',ha='center',fontsize=fontsize,color=color)
+    #add arrow
+    if arrow_direction>0:
+        ax.arrow((pos1[0]+pos2[0])/2.,(pos1[1]+pos2[1])/2.,1e-5*(pos2[0]-pos1[0]),1e-5*(pos2[1]-pos1[1]),color=color,head_width=0.08,head_length=0.12,length_includes_head=False)
+    elif arrow_direction<0:
+        ax.arrow((pos1[0]+pos2[0])/2.,(pos1[1]+pos2[1])/2.,-1e-5*(pos2[0]-pos1[0]),-1e-5*(pos2[1]-pos1[1]),color=color,head_width=0.08,head_length=0.12,length_includes_head=False)
 
 def _plot_selfloop(pos,label,color=None,fontsize=None,ax=None,zoom=1.):
     pos=asarray(pos)
@@ -48,14 +54,15 @@ def _plot_selfloop(pos,label,color=None,fontsize=None,ax=None,zoom=1.):
     xy=pos+[0,textoffset+0.2*zoom+0.34*zoom]
     ax.annotate(label,xytext=xy,xy=xy,va='center',ha='center',fontsize=fontsize,color=color)
 
-def draw_tensor(x,y,legs=[],legmask=None,zoom=1.,facetext=None,hatch=None,ax=None):
+def draw_tensor(x,y,legs=[],legmask=None,flowmask=None,zoom=1.,facetext=None,hatch=None,ax=None):
     '''
     Draw a general tensor, with round kernel.
 
     Parameters:
         :x,y: number, the position.
         :legs: list, items are (label,theta)
-        :legmask: None,1d array, the mask array for legs.
+        :legmask: None/list, the mask array for legs.
+        :flowmask: None/list, the flow direction, 1 for out, -1 for in, 0 for nothing.
         :zoom: number, the size of tensor.
         :facetext: (str,color,number), text, color and text fontsize.
         :hatch: str, matplotlib hatch.
@@ -68,6 +75,7 @@ def draw_tensor(x,y,legs=[],legmask=None,zoom=1.,facetext=None,hatch=None,ax=Non
     leg_fontsize=plot_params['leg_fontsize']
     leglength=plot_params['leglength']*zoom
     if legmask is None: legmask=[True]*len(legs)
+    if flowmask is None: flowmask=[0]*len(legs)
 
     rry=rr=0.2*zoom  #the radius.
     rh=rv=leglength
@@ -79,28 +87,31 @@ def draw_tensor(x,y,legs=[],legmask=None,zoom=1.,facetext=None,hatch=None,ax=Non
 
     #draw legs, and show texts for legs
     V0=[rr,0]
-    for leginfo,mask in zip(legs,legmask):
+    for leginfo,mask,flow in zip(legs,legmask,flowmask):
         label,theta=leginfo
         #draw leg
         v0=rotate_leg(V0,theta)
         v1=v0*(leglength+rr)/rr
         v0,v1=v0+(x,y),v1+(x,y)
-        _plot_textedline(v0,v1,label)
+        _plot_textedline(v0,v1,label,arrow_direction=flow)
 
     #face text
     if facetext is not None:
         t,color,size=facetext
         text(x,y,t,va='center',ha='center',color=color,fontsize=size)
 
-def draw_kb(x,y,labels=['','',''],legmask=[True]*3,hatch=None,zoom=1.,ax=None,is_ket=True):
+def draw_kb(x,y,labels=['','',''],legmask=[True]*3,flowmask=[0]*3,hatch=None,zoom=1.,ax=None,is_ket=True,facecolor=None):
     '''
     Draw a ket/bra.
+
+    Parameters:
+        :flowmask: len-3 list, the flow direction, 1 for out, -1 for in, 0 for nothing.
 
     ket sticks up and bra sticks down.
     '''
     if ax is None: ax=gca()
     leg_fontsize=plot_params['leg_fontsize']
-    facecolor=plot_params['facecolor']
+    facecolor=plot_params['facecolor'] if facecolor is None else facecolor
     legcolor=plot_params['legcolor']
     legw=plot_params['legw']
     leglength=plot_params['leglength']*zoom
@@ -116,10 +127,33 @@ def draw_kb(x,y,labels=['','',''],legmask=[True]*3,hatch=None,zoom=1.,ax=None,is
     ax.add_patch(c1)
 
     #draw legs, and show texts for legs
-    poss=[[(x-rr-rh,y),(x-rr,y)],[(x,y+rry),(x,y+rry+rv)],[(x+rr+rh,y),(x+rr,y)]]
-    for label,(pos1,pos2),mask in zip(labels,poss,legmask):
+    poss=[[(x-rr,y),(x-rr-rh,y)],[(x,y+rry),(x,y+rry+rv)],[(x+rr,y),(x+rr+rh,y)]]
+    for label,(pos1,pos2),mask,flow in zip(labels,poss,legmask,flowmask):
         if not mask: continue
-        _plot_textedline(pos1,pos2,label)
+        _plot_textedline(pos1,pos2,label,arrow_direction=flow)
+
+def draw_diamond(x,y,labels=['','','',''],legmask=[True]*4,flowmask=[0]*4,hatch=None,zoom=1.,ax=None):
+    '''
+    Draw a diamond.
+
+    Parameters:
+        :flowmask: len-4 list, the flow direction, 1 for out, -1 for in, 0 for nothing.
+    '''
+    if ax is None: ax=gca()
+    leg_fontsize=plot_params['leg_fontsize']
+    facecolor=plot_params['facecolor']
+    legcolor=plot_params['legcolor']
+    legw=plot_params['legw']
+    leglength=plot_params['leglength']*zoom
+    rs=zoom*0.15
+
+    #draw diamond
+    ax.add_patch(patches.Polygon(xy=[(x,y+rs),(x+rs,y),(x,y-rs),(x-rs,y)],facecolor=facecolor,hatch=hatch))
+    #draw legs, and show texts for legs
+    poss=[[(x-rs,y),(x-rs-leglength,y)],[(x,y+rs),(x,y+leglength+rs)],[(x,y-rs),(x,y-rs-leglength)],[(x+rs,y),(x+rs+leglength,y)]]
+    for label,(pos1,pos2),mask,flow in zip(labels,poss,legmask,flowmask):
+        if not mask: continue
+        _plot_textedline(pos1,pos2,label,arrow_direction=flow)
 
 def draw_rect(x,y,legs={},hatch=None,zoom=1.,ax=None,facetext=None):
     '''
@@ -189,13 +223,14 @@ def draw_rect(x,y,legs={},hatch=None,zoom=1.,ax=None,facetext=None):
         t,color,size=facetext
     text(x,y,t,va='center',ha='center',color=color,fontsize=size)
 
-def draw_tri(x,y,labels=['','',''],legmask=[True]*3,hatch=None,zoom=1.,ax=None,rotate=0):
+def draw_tri(x,y,labels=['','',''],legmask=[True]*3,flowmask=[0]*3,hatch=None,zoom=1.,ax=None,rotate=0):
     '''
     Draw a triangular tensor.
 
     Parameters:
         :x,y: float, the position.
         :labels: list ,the labels for up/down,right,left
+        :flowmask: len-3 list, the flow direction, 1 for out, -1 for in, 0 for nothing.
     '''
     if ax is None: ax=gca()
     leg_fontsize=plot_params['leg_fontsize']
@@ -217,25 +252,26 @@ def draw_tri(x,y,labels=['','',''],legmask=[True]*3,hatch=None,zoom=1.,ax=None,r
         if not legmask[i]: continue
         p1=rotate_leg(pp,theta)
         p2=(1+leglength/rr)*p1
-        _plot_textedline(p1+(x,y),p2+(x,y),lbi)
+        _plot_textedline(p1+(x,y),p2+(x,y),lbi,arrow_direction=flowmask[i])
 
-def draw_sq(x,y,labels=['']*4,legmask=[True]*4,hatch=None,zoom=1.,ax=None):
+def draw_sq(x,y,labels=['']*4,legmask=[True]*4,flowmask=[0]*4,hatch=None,zoom=1.,ax=None,facecolor=None,facetext=''):
     '''
     Draw a square, cell of MPO.
 
     Parameters:
         :x,y: the position
         :labels: list/None, the labels for each leg.
-        :nleg: len-2 list ,the number of legs sticking up and down.
-        :facetxt: tuple, (text,color,size)
+        :legmask: len-4 list, draw legs or not.
+        :flowmask: len-4 list, the flow direction, 1 for out, -1 for in, 0 for nothing.
+        :facetext: (str,color,fontsize)
     '''
     if ax is None: ax=gca()
-    facecolor=plot_params['facecolor']
+    facecolor=facecolor or plot_params['facecolor']
     legcolor=plot_params['legcolor']
     legw=plot_params['legw']
     leglength=plot_params['leglength']*zoom
     leg_fontsize=plot_params['leg_fontsize']
-    width=height=0.6*zoom
+    width=height=0.4*zoom
     textoffset=plot_params['textoffset']*zoom
 
     #show square
@@ -247,7 +283,12 @@ def draw_sq(x,y,labels=['']*4,legmask=[True]*4,hatch=None,zoom=1.,ax=None):
     for i,(label,theta) in enumerate(zip(labels,[0,-pi/2,pi/2,pi])):
         if not legmask[i]: continue
         v1i,v0i=rotate_leg(v1,theta)+(x,y),rotate_leg(v0,theta)+(x,y)
-        _plot_textedline(v1i,v0i,label)
+        _plot_textedline(v1i,v0i,label,arrow_direction=flowmask[i])
+
+    #face text
+    if facetext is not None:
+        t,color,size=facetext
+    text(x,y,t,va='center',ha='center',color=color,fontsize=size)
 
 ######################## Draw MPSs and TNs #################################
 def show_vidalmps(vidal,offset=(0,0)):

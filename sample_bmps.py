@@ -19,7 +19,7 @@ from blockmatrix import SimpleBMG
 
 ########### Generate a random State ######
 #the single site Hilbert space(Spin) config, 2 spin, 1 orbital.
-spaceconfig=SpinSpaceConfig([2,1])
+spaceconfig=SpinSpaceConfig([1,2])
 #the generator of block marker,
 #using magnetization `M = nup-ndn` as good quantum number.
 bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='M')

@@ -26,10 +26,20 @@ def random_bop(spaceconfig,siteindex):
     assert_(not cop.fermionic)
     return cop.as_site(siteindex)
 
+def test_I():
+    spaceconfig=SuperSpaceConfig([1,2,1])
+    ou1=opunit_S(spaceconfig,'x')
+    I=OpUnitI(hndim=spaceconfig.hndim)
+    res1=ou1*I
+    res2=I*ou1
+    res3=I*I
+    assert_allclose(res1.get_data(),res2.get_data())
+    assert_(res3.__class__==OpUnitI)
+
 def test_ss():
     '''test for spin operators'''
     print 'Test Fermionic type.'
-    scfg=[1,2,1,1]
+    scfg=[1,1,2,1]
     spaceconfig=SuperSpaceConfig(scfg)
     ss=['x','y','z','+','-']
     sdatas=zeros([5,4,4],dtype='complex128')
@@ -46,14 +56,14 @@ def test_ss():
         assert_allclose(ou1.data,sdata)
     print 'Test Bonson type.'
     sdatas=sdatas[:,1:-1,1:-1]
-    spaceconfig=SpinSpaceConfig([2,1])
+    spaceconfig=SpinSpaceConfig([1,2])
     for s,sdata in zip(ss,sdatas):
         ou1=opunit_S(spaceconfig,s)
         assert_allclose(ou1.data,sdata)
 
 def test_cs():
     '''test for c operators'''
-    scfg=[2,1,1]
+    scfg=[1,2,1]
     spaceconfig=SuperSpaceConfig(scfg)
     cup=opunit_c(spaceconfig,0)
     cupd=opunit_cdag(spaceconfig,0)
@@ -95,56 +105,56 @@ class CastTest(object):
     def test_casting2(self):
         '''test for type casting to opstring, and opcollection.'''
         factor=2.
-        config=[1,2,10,3]
+        config=[1,10,2,3]
         scfg=SuperSpaceConfig(config)
-        config2=[1,2,1,3]
+        config2=[1,1,2,3]
         scfg2=SuperSpaceConfig(config2)
         #test for bilinear casting
         c1=[random.randint(0,config[i]) for i in xrange(4)]
         c2=[random.randint(0,config[i]) for i in xrange(4)]
-        c1_=list(c1);c1_[2]=0
-        c2_=list(c2);c2_[2]=0
+        c1_=list(c1);c1_[1]=0
+        c2_=list(c2);c2_[1]=0
         bl=Bilinear(spaceconfig=scfg,index1=scfg.c2ind(c1),index2=scfg.c2ind(c2))
         str1=xl2string(bl,factor)
         index1=scfg2.c2ind(c1_)
         index2=scfg2.c2ind(c2_)
         data1=op_cdag(scfg2,index1)()
         data2=op_c(scfg2,index2)()
-        if c1[2]>c2[2]:
+        if c1[1]>c2[1]:
             data1,data2=data2,data1
         print 'Using Fermions: ',c1,c2
         if isinstance(str1,OpString):
             print 'Get opstring -> ',str1
-            assert_(str1.opunits[0].factor*(1 if c1[-2]<=c2[-2] else -1)==factor and str1.opunits[1].factor==1.)
+            assert_(str1.opunits[0].factor*(1 if c1[-3]<=c2[-3] else -1)==factor and str1.opunits[1].factor==1.)
             assert_allclose(str1.opunits[0].data,data1,atol=1e-5)
             assert_allclose(str1.opunits[1].data,data2,atol=1e-5)
         else:
             print 'Get opunit -> ',[str1]
-            assert_(str1.factor*(1 if c1[-2]<=c2[-2] else -1)==factor)
+            assert_(str1.factor*(1 if c1[-3]<=c2[-3] else -1)==factor)
             assert_allclose(str1.data,data1.dot(data2),atol=1e-5)
 
     def test_casting4(self):
         '''test for type casting for qlinear'''
         factor=2.
-        config=[1,2,5,3]
+        config=[1,5,2,3]
         scfg=SuperSpaceConfig(config)
-        config2=[1,2,1,3]
+        config2=[1,1,2,3]
         scfg2=SuperSpaceConfig(config2)
         #test for bilinear casting
         cs=[[random.randint(0,config[i]) for i in xrange(4)] for i in xrange(4)]
         cs_=[]
         for ci in cs:
-            ci=list(ci);ci[2]=0
+            ci=list(ci);ci[1]=0
             cs_.append(ci)
         bl=Qlinear(spaceconfig=scfg,indices=array([scfg.c2ind(ci) for ci in cs]))
         indices=[scfg2.c2ind(ci) for ci in cs_]
         str1=xl2string(bl,factor)
-        sites=array([c[-2] for c in cs])
+        sites=array([c[-3] for c in cs])
         print 'Get sites',sites
         parity=1-2*(sum([sum(sites[:i]>sites[i]) for i in xrange(1,4)])%2)
         print 'parity',parity
         datas=[op_cdag(scfg2,ind)() if i<2 else op_c(scfg2,ind)() for i,ind in enumerate(indices)]
-        sites=array([ci[2] for ci in cs])
+        sites=array([ci[1] for ci in cs])
         datas=array(datas)
         print 'Using Fermions: ',cs
         if isinstance(str1,OpString):
@@ -160,15 +170,15 @@ class CastTest(object):
                             cdata=cdata.dot(datai)
                 else:
                     cdata=data[0]
-                assert_(ou.factor==(factor*parity if i==0 else 1.))
                 assert_allclose(ou.data,cdata,atol=1e-5)
+            assert_(prod([ou.factor for ou in str1.opunits])==factor*parity)
         else:
             print 'Get opunit -> ',[str1]
             assert_(str1.factor*parity==factor)
             assert_allclose(str1.data,datas[0].dot(datas[1]).dot(datas[2]).dot(datas[3]),atol=1e-5)
 
 def test_insertZ():
-    scfg=[2,1,1]
+    scfg=[1,2,1]
     spaceconfig=SuperSpaceConfig(scfg)
     opstring=0.5*opunit_C(dag=True,spaceconfig=spaceconfig,index=0,siteindex=2)*opunit_C(dag=False,spaceconfig=spaceconfig,index=1,siteindex=3)
     opstring2=copy.copy(opstring)
@@ -176,7 +186,7 @@ def test_insertZ():
     print opstring,opstring2
 
 def test_oumul():
-    scfg=[2,1,1]
+    scfg=[1,2,1]
     nsite=10
     spaceconfig=SuperSpaceConfig(scfg)
     print 'Multiplication of OpUnits'
@@ -199,7 +209,7 @@ def test_oumul():
                 assert_(isinstance(res,OpString) and allclose(res.opunits[0].get_data(),sign*oa.get_data()) and allclose(res.opunits[1].get_data(),ob.get_data()))
 
 def test_osmul(is_fermion):
-    scfg=[2,1,1]
+    scfg=[1,2,1]
     nsite=10
     spaceconfig=SuperSpaceConfig(scfg)
     print 'Multiplication of OpStrings.'
@@ -229,7 +239,7 @@ def test_osmul(is_fermion):
         assert_almost_equal(prod([ou.factor for ou in res.opunits]),sign)
 
 def test_add():
-    scfg=[2,1,1]
+    scfg=[1,2,1]
     nsite=4
     spaceconfig=SuperSpaceConfig(scfg)
     print 'Test Addition of OpUnit,OpString and OpCollection.'
@@ -253,6 +263,7 @@ def test_add():
 
 test_cs()
 test_ss()
+test_I()
 test_insertZ()
 test_add()
 test_osmul(True)

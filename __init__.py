@@ -10,4 +10,4 @@ from utils import *
 from sa import *
 from tnet import *
 from ivmps import *
-__all__=['tensor','mpo','mpolib','mps','mpslib','contraction','tensorlib','btensor','tnet','ivmps']
+__all__=['tensor','mpo','mpolib','mps','mpslib','contraction','tensorlib','btensor','tnet','ivmps','ssf']

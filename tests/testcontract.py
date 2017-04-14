@@ -35,7 +35,7 @@ class TestCon(object):
         mps2=state2MPS(vec2,sitedim=hndim,l=l,method='svd')     #parse the state into a <MPS> instance.
 
         j1,j2=0.5,0.2
-        scfg=SpinSpaceConfig([2,1])
+        scfg=SpinSpaceConfig([1,2])
         I=OpUnitI(hndim=hndim)
         Sz=opunit_Sz(spaceconfig=scfg)
         Sp=opunit_Sp(spaceconfig=scfg)
@@ -173,7 +173,7 @@ class TestCon(object):
         #self.test_usvs()
 
 def test_G_Gong():
-    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([2,1]),qstring='QM')
+    bmg=SimpleBMG(spaceconfig=SpinSpaceConfig([1,2]),qstring='QM')
     ket=random_bmps(bmg=bmg,nsite=10,maxN=50)
     bra=ket.tobra(labels=[ket.labels[0],ket.labels[1]+'_'])
     print 'Test Gong graph.'
