@@ -17,7 +17,6 @@ from mpolib import *
 from mpslib import *
 from contraction import *
 from mps import MPS
-from contraction import Contractor
 from pydavidson import gs
 from utils import fast_svd
 from blockmatrix import SimpleBMG

@@ -9,9 +9,9 @@ from abc import ABCMeta, abstractmethod
 
 from utils import inherit_docstring_from
 from blockmatrix import BlockMarker
-from tensor import BLabel,Tensor
+from tensor import BLabel,Tensor,TensorBase
 from btensor import BTensor
-from tensorlib import svdbd,tensor_block_diag,check_validity_tensor
+from tensorlib import tensor_block_diag,check_validity_tensor
 
 __all__=['MPSBase','MPS','BMPS','mPS']
 
@@ -40,15 +40,7 @@ def _mps_sum(mpses,labels=('s','a')):
     nsite=mps0.nsite
     site_axis=mps0.site_axis
 
-    #get datas
-    #ML,bms=[],[]
-    #for i in xrange(nsite):
-        #ai=transpose([block_diag(*[mi[i].take(j,axis=site_axis) for mi in MLs]) for j in xrange(hndim)],axes=[1,0,2])
-        #ML.append(ai)
     ML=[tensor_block_diag(mis,axes=(2,) if i==0 else ((0,) if i==nsite-1 else (0,2))) for i,mis in enumerate(zip(*MLs))]
-    ##fix the ends
-    #ML[0]=ML[0].sum(axis=0)[newaxis,...]
-    #ML[-1]=ML[-1].sum(axis=2)[...,newaxis]
 
     #get S matrix
     if l==0 or l==nsite:
@@ -58,54 +50,15 @@ def _mps_sum(mpses,labels=('s','a')):
     return mPS(ML,l,S=S,labels=labels,bmg=mps0.bmg if hasattr(mps0,'bmg') else None)
 
 
-def _determine_flow(ts,bmg,signs,check_conflicts=False):
-    '''
-    Determine the flow for one axis of a tensor.
-
-    Parameters:
-        :ts: <Tensor>,
-        :bmg: <BlockMarkerGenerator>,
-        :signs: 1d array, the flow directions of tensors.
-        :check_conflicts: bool, detect the conflicts in tensor, to filter out tensors without specific good quantum number.
-
-    Return:
-        <Tensor>, the new tensor, with the remainning axis determined.
-    '''
-    #find the un-determined axis.
-    which=where([not isinstance(lb,BLabel) for lb in ts.labels])[0][0]
-
-    #get the matrix of Quantum number
-    QNS=zeros(ts.shape+(bmg.qns1.shape[-1],),dtype=bmg.qns1.dtype)
-    for i,(lb,sign) in enumerate(zip(ts.labels,signs)):
-        if i!=which:
-            QNS=QNS+sign*lb.bm.inflate().qns[[slice(None)]+[newaxis]*(ts.ndim-1-i)]
-    QNS=bmg.trim_qns(-QNS*sign)
-
-    #get quantum numbers using non-zero elements of tensors.
-    mask=ts!=0
-    QNS[~mask]=0
-    raxes=tuple(range(which)+range(which+1,ts.ndim))
-    qns=QNS.sum(axis=raxes,dtype=QNS.dtype)
-    qns/=mask.sum(axis=raxes)[:,newaxis]
-
-    #detect conflicts!
-    if check_conflicts:
-        for i in xrange(len(qns)):
-            qni=QNS.take(i,axis=which)[ts.take(i,axis=which)!=0]
-            if any(qns[i]!=qni):
-                raise ValueError()
-
-    bmr=BlockMarker(Nr=arange(ts.shape[which]+1),qns=qns)
-    ts.labels[which]=BLabel(ts.labels[which],bmr)
-    return ts
-
-def _autoset_bms(TL,bmg,check_conflicts=False):
+def _autoset_bms(TL,bmg,bml0=None,reorder=False,check_conflicts=False):
     '''
     Auto setup blockmarkers for <MPS> and <MPO>.
 
     Parameters:
         :TL: list, a list of tensors.
         :bmg: <BlockMarkerGenerator>,
+        :bml0: <BlockMarker>, initial blockmarker at left end, bmg.bm0 by default.
+        :reorder: bool, make sure quantum numbers in bonds are ordered.
         :check_conflicts: bool,
 
     Return:
@@ -117,9 +70,13 @@ def _autoset_bms(TL,bmg,check_conflicts=False):
     pm=slice(None)
     for i in xrange(nsite):
         #cell is a tensor tensor(al,sup,ar), first permute left axes to match the transformation of block marker
-        cell=TL[i][pm]
+        cell=TL[i]
+        if reorder: cell=cell[pm]
         #get bml
-        bml=TL[i-1].labels[-1].bm if i!=0 else bmg.bm0
+        if i==0:
+            bml=bmg.bm0 if bml0 is None else bml0
+        else:
+            bml=TL[i-1].labels[-1].bm
 
         #setup left, site labels.
         cell.labels[:2]=[
@@ -128,11 +85,46 @@ def _autoset_bms(TL,bmg,check_conflicts=False):
         if not is_mps: cell.labels[2]=BLabel(cell.labels[2],bm1)
 
         #get bmr
-        _determine_flow(cell,bmg,signs=[1,1,-1] if is_mps else [1,1,-1,-1],check_conflicts=check_conflicts)
-        cell,(pm,)=cell.b_reorder(axes=(-1,),return_pm=True)
+        cell.autoflow(axis=-1,bmg=bmg,signs=[1,1,-1] if is_mps else [1,1,-1,-1],check_conflicts=check_conflicts)
+        if reorder:
+            cell,(pm,)=cell.b_reorder(axes=(-1,),return_pm=True)
 
         TL[i]=cell
     return TL
+
+def _auto_label(TL,labels,bm1=None,bms=None):
+    is_mps=TL[0].ndim==3
+    for i,M in enumerate(TL):
+        lbs=['%s_%s'%(labels[-1],i),'%s_%s'%(labels[0],i),'%s_%s'%(labels[-1],i+1)]
+        if bms is not None:
+            bmis=[bms[i]]+[bm1]*(M.ndim-2)+[bms[i+1]]
+            lbs=[BLabel(s,b) for s,b in zip(lbs,bmis)]
+        if not is_mps: lbs.insert(2,'%s_%s'%(labels[1],i))
+        if isinstance(M,TensorBase):
+            M.chlabel(lbs)
+        elif isinstance(M,ndarray):
+            TL[i]=Tensor(M,labels=lbs)
+        else:
+            raise TypeError
+    return TL
+
+def _replace_cells(mpx,sls,cells):
+    start,stop=sls.start,sls.stop
+    ncell=len(cells)
+    is_mps=hasattr(mpx,'S')
+    if is_mps and mpx.l>=stop:
+        mpx.l+=ncell
+    if is_mps:
+        #insert cells
+        mpx.ML=mpx.ML[:start]+list(cells)+mpx.ML[stop:]
+    else:
+        mpx.OL=mpx.OL[:start]+list(cells)+mpx.OL[stop:]
+    #adjust labels of original cells
+    _auto_label(mpx.ML if is_mps else mpx.OL,labels=mpx.labels)
+
+    #adjust block markers
+    if hasattr(mpx,'bmg'):
+        _autoset_bms(mpx.ML[start:] if is_mps else mpx.OL[start:],bmg=mpx.bmg,bml0=mpx.get(start-1).labels[-1].bm,reorder=False,check_conflicts=False)
 
 class MPSBase(object):
     '''
@@ -391,6 +383,25 @@ class MPS(MPSBase):
             raise ValueError('l=%s out of bound!'%siteindex)
         self.ML[siteindex]=A
 
+    def insert(self,pos,cells):
+        '''
+        Insert cells into MPS.
+
+        Parameters:
+            :cells: list, tensors.
+        '''
+        _replace_cells(self,slice(pos,pos),cells)
+
+    def remove(self,start,stop):
+        '''
+        Remove a segment from MPS.
+
+        Parameters:
+            :start: int,
+            :stop: int,
+        '''
+        _replace_cells(self,slice(start,stop),[])
+
     def check_link(self,l):
         '''
         The bond dimension for l-th link.
@@ -482,30 +493,16 @@ class MPS(MPSBase):
             cbond_str=B.labels[llink_axis]
             #contract AB,
             AB=A*B
-            #transform it into matrix form and do svd decomposition.
-            if use_bm:
-                AB=AB.merge_axes(bmg=self.bmg,sls=slice(0,2),signs=[1,1]).merge_axes(bmg=self.bmg,sls=slice(1,3),signs=[-1,1])
-                AB,pms=AB.b_reorder(return_pm=True)
-                U,S,V=svdbd(AB,cbond_str=cbond_str)
-            else:
-                AB=AB.reshape([-1,prod(AB.shape[2:])])
-                U,S,V=svd(AB,full_matrices=False)
+            U,S,V=AB.svd(cbond=2,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,1])
+            bdim=len(S)
 
             #truncation
             if maxN<S.shape[0]:
                 tol=max(S[maxN],tol)
             kpmask=S>tol
             acc*=(1-sum(S[~kpmask]**2))
-
             #unpermute blocked U,V and get c label
-            if use_bm:
-                U,S,V=U.take(kpmask,axis=1).take(argsort(pms[0]),axis=0),S[kpmask],V.take(kpmask,axis=0).take(argsort(pms[1]),axis=1)
-            else:
-                U,S,V=Tensor(U[:,kpmask],labels=[A.labels[0],cbond_str]),S[kpmask],Tensor(V[kpmask],[cbond_str,B.labels[-1]])
-            #set datas
-            self.S=S
-            self.ML[self.l-1]=U.split_axis(0,nlabels=A.labels[:2],dims=A.shape[:2])
-            self.ML[self.l]=V.split_axis(1,nlabels=B.labels[1:],dims=B.shape[1:])
+            self.ML[self.l-1],self.S,self.ML[self.l]=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
         return 1-acc
 
     def use_bm(self,bmg,sharedata=True):
@@ -581,18 +578,8 @@ class MPS(MPSBase):
         Parametrs:
             :labels: list, the new labels.
         '''
-        nsite=self.nsite
         self.labels=labels
-        slabel,llabel=labels
-        for l,ai in enumerate(self.ML):
-            if hasattr(ai.labels[0],'bm'):
-                ai.labels[self.site_axis]=ai.labels[self.site_axis].chstr('%s_%s'%(slabel,l))
-                ai.labels[self.llink_axis]=ai.labels[self.llink_axis].chstr('%s_%s'%(llabel,l))
-                ai.labels[self.rlink_axis]=ai.labels[self.rlink_axis].chstr('%s_%s'%(llabel,l+1))
-            else:
-                ai.labels[self.site_axis]='%s_%s'%(slabel,l)
-                ai.labels[self.llink_axis]='%s_%s'%(llabel,l)
-                ai.labels[self.rlink_axis]='%s_%s'%(llabel,l+1)
+        _auto_label(self.ML,labels)
 
     def query(self,serie):
         '''
@@ -705,22 +692,9 @@ def mPS(ML,l,S,is_ket=True,labels=['s','a'],bmg=None,bms=None):
     '''
     Construct MPS.
     '''
-    nML=[]
-    s,a=labels
-    for i,M in enumerate(ML):
-        lbs=['%s_%s'%(a,i),'%s_%s'%(s,i),'%s_%s'%(a,i+1)]
-        if isinstance(M,ndarray):
-            mi=Tensor(M,labels=lbs)
-        elif isinstance(M,BTensor):
-            mi=M.make_copy(labels=[bl.chstr(lb) for bl,lb in zip(M.labels,lbs)],copydata=False)
-        else:
-            raise TypeError
-        #set up block markers manually.
-        if bms is not None:
-            mi.labels=[BLabel(lbs[0],bms[i]),BLabel(lbs[1],bmg.bm1_),BLabel(lbs[2],bms[i+1])]
-        nML.append(mi)
+    _auto_label(ML,labels,bms=bms,bm1=None if bmg is None else bmg.bm1_)
     if bmg is None:  #a normal MPS
-        return MPS(nML,l,S,is_ket=is_ket,labels=labels)
+        return MPS(ML,l,S,is_ket=is_ket,labels=labels)
     else:
-        if isinstance(nML[0],Tensor) and bms is None: _autoset_bms(nML,bmg)
-        return BMPS(nML,l,S,is_ket=is_ket,labels=labels,bmg=bmg)
+        if isinstance(ML[0],Tensor) and bms is None: _autoset_bms(ML,bmg)
+        return BMPS(ML,l,S,is_ket=is_ket,labels=labels,bmg=bmg)

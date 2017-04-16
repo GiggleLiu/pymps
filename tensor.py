@@ -4,11 +4,12 @@ TensorBase and dense Tensor Class.
 
 import numpy as np
 from numpy import array
+from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 import copy,pdb,numbers,itertools
 
-from utils import inherit_docstring_from
-from blockmatrix import join_bms,BlockMarker
+from utils import inherit_docstring_from,ldu
+from blockmatrix import join_bms,BlockMarker,block_diag
 
 __all__=['TensorBase','Tensor','tdot','BLabel']
 
@@ -206,26 +207,165 @@ class TensorBase(object):
         '''
         pass
 
-    def chlabel(self,axis,nlabel):
+    def chlabel(self,nlabel,axis=None):
         '''
         Change the label in place.
 
         Parameters:
-            :axis: int/str, the axis/label to change.
+            :axis: int/None, the axis to change.
             :nlabel: str, the new label.
 
         Return:
             self
         '''
-        labels=self.labels[:]
-        if isinstance(axis,str):
-            axis=labels.index(axis)
-        if isinstance(axis,int):
-            labels[axis]=nlabel
-            self.labels=labels
+        if axis is None:
+            if len(nlabel)!=self.ndim: raise ValueError
+            for i in xrange(self.ndim):
+                self.chlabel(nlabel[i],axis=i)
             return self
+        if axis<0: axis=self.ndim-axis
+        labels=self.labels[:]
+        if hasattr(labels[axis],'bm') and not hasattr(nlabel,'bm'):
+            labels[axis]=labels[axis].chstr(nlabel)
         else:
-            raise TypeError('Wrong type for axis indicator: %s.'%axis.__class__)
+            labels[axis]=nlabel
+        self.labels=labels
+        return self
+
+    def svd(self,cbond,cbond_str='_O_',kernal='svd',signs=None,bmg=None):
+        '''
+        Get the svd decomposition for dense tensor with block structure.
+
+        Parameters:
+            :cbond: int, the bound to perform svd.
+            :cbond_str: str, the labes string for center bond.
+            :kernal: 'svd'/'ldu', the kernal of svd decomposition.
+            :signs: list,
+            :bmg: <BlockMarkerGenerator>,
+
+        Return:
+            (U,S,V) that U*S*V = A
+        '''
+        if kernal=='svd':
+            csvd=lambda cell: svd(cell,full_matrices=False,lapack_driver='gesvd')
+        elif kernal=='ldu':
+            csvd=lambda cell: ldu(cell)
+        else:
+            raise ValueError()
+        from btensor import BTensor
+
+        #cope two exteme cases, no bm and null bm.
+        if isinstance(self.labels[0],BLabel):
+            if signs is None or bmg is None: raise ValueError
+            #first, find the block structure and make it block diagonal
+            M=self.merge_axes(sls=slice(cbond,self.ndim),nlabel='_X_',signs=signs[cbond:],bmg=bmg).merge_axes(sls=slice(0,cbond),nlabel='_Y_',signs=signs[:cbond],bmg=bmg)
+            if M.labels[0].bm.qns.shape[1]==0:
+                U,S,V=csvd(M)
+                center_label=BLabel(cbond_str,BlockMarker(qns=np.zeros([1,0],dtype='int32'),Nr=array([0,len(S)])))
+                U=Tensor(U,labels=[M.labels[0],center_label])
+                V=Tensor(V,labels=[center_label,M.labels[1]])
+                return U,S,V
+        else:
+            M=self.merge_axes(sls=slice(cbond,self.ndim),nlabel='_X_').merge_axes(sls=slice(0,cbond),nlabel='_Y_')
+            #perform svd and roll back to original non-block structure
+            U,S,V=csvd(M)
+            U=Tensor(U.reshape(self.shape[:cbond]+(S.shape[0],)),labels=self.labels[:cbond]+[cbond_str])
+            V=Tensor(V.reshape((S.shape[0],)+self.shape[cbond:]),labels=[cbond_str]+self.labels[cbond:])
+            return U,S,V
+
+        M,pms=M.b_reorder(return_pm=True)
+        #check and prepair datas
+        bm1,bm2=M.labels[0].bm,M.labels[1].bm
+        qns1,qns2=bm1.qns,bm2.qns
+        qns1_1d = qns1.copy().view([('',qns1.dtype)]*qns1.shape[1])
+        qns2_1d = qns2.copy().view([('',qns2.dtype)]*qns2.shape[1])
+        common_qns_1d=np.intersect1d(qns1_1d,qns2_1d)
+        common_qns_2d=common_qns_1d.view(bm1.qns.dtype).reshape(-1,bm1.qns.shape[-1])
+        cqns1=tuple(bm1.index_qn(lbi).item() for lbi in common_qns_2d)
+        cqns2=tuple(bm2.index_qn(lbi).item() for lbi in common_qns_2d)
+
+        #do SVD
+        UL,SL,VL=[],[],[]
+        for c1,c2 in zip(cqns1,cqns2):
+            cell=M.get_block((c1,c2))
+            Ui,Si,Vi=csvd(cell)
+            UL.append(Ui); SL.append(Si); VL.append(Vi)
+
+        #get center BLabel and S
+        nr=[len(si) for si in SL]
+        Nr=np.append([0],np.cumsum(nr))
+        b0=BLabel(cbond_str,BlockMarker(Nr=Nr,qns=common_qns_2d))
+        S=np.concatenate(SL)
+
+        #get U, V
+        if isinstance(M,Tensor):
+            #get correct shape of UL
+            ptr=0
+            for i,lbi_1d in enumerate(qns1_1d):
+                if lbi_1d!=common_qns_1d[ptr]:
+                    UL.insert(i,np.zeros([bm1.blocksize(i),0],dtype=M.dtype))
+                elif ptr!=len(common_qns_1d)-1:
+                    ptr=ptr+1
+
+            #the same for VL
+            ptr=0
+            for i,lbi_1d in enumerate(qns2_1d):
+                if lbi_1d!=common_qns_1d[ptr]:
+                    VL.insert(i,np.zeros([0,bm2.blocksize(i)],dtype=M.dtype))
+                elif ptr!=len(common_qns_1d)-1:
+                    ptr=ptr+1
+            U,V=Tensor(block_diag(*UL),labels=[M.labels[0],b0]),Tensor(block_diag(*VL),labels=[b0,M.labels[1]])
+        elif isinstance(M,BTensor):
+            U=BTensor(dict(((b1,b2),data) for b2,(b1,data) in enumerate(zip(cqns1,UL))),labels=[M.labels[0],b0])
+            V=BTensor(dict(((b1,b2),data) for b1,(b2,data) in enumerate(zip(cqns2,VL))),labels=[b0,M.labels[1]])
+
+        #detect a shape error raised by the wrong ordering of block marker.
+        if M.shape[0]!=U.shape[0] or M.shape[1]!=V.shape[1]:
+            raise Exception('Error! 1. check block markers!')
+        #U,V=U.take(np.argsort(pms[0]),axis=0).split_axis(axis=0,nlabels=self.labels[:cbond],dims=self.shape[:cbond]),V.take(np.argsort(pms[1]),axis=1).split_axis(axis=1,nlabels=self.labels[cbond:],dims=self.shape[cbond:])
+        U,V=U.take(np.argsort(pms[0]),axis=0),V.take(np.argsort(pms[1]),axis=1)
+        U,V=U.split_axis(axis=0,nlabels=self.labels[:cbond],dims=self.shape[:cbond]),V.split_axis(axis=1,nlabels=self.labels[cbond:],dims=self.shape[cbond:])
+        return U,S,V
+
+    def autoflow(self,axis,bmg,signs,check_conflicts=False):
+        '''
+        Determine the flow for one axis of a tensor by quantum number conservation rule.
+
+        Parameters:
+            :axis: int, the direction with quantum number unspecified.
+            :bmg: <BlockMarkerGenerator>,
+            :signs: 1d array, the flow directions of tensors.
+            :check_conflicts: bool, detect the conflicts in tensor, to filter out tensors without specific good quantum number.
+
+        Return:
+            <Tensor>, the new tensor, with the remainning axis determined.
+        '''
+        if axis<0: axis=axis+self.ndim
+        #get the matrix of Quantum number
+        QNS=np.zeros(self.shape+(bmg.qns1.shape[-1],),dtype=bmg.qns1.dtype)
+        for i,(lb,sign) in enumerate(zip(self.labels,signs)):
+            if i!=axis:
+                QNS=QNS+sign*lb.bm.inflate().qns[[slice(None)]+[np.newaxis]*(self.ndim-1-i)]
+        QNS=bmg.trim_qns(-QNS*sign)
+
+        #get quantum numbers using non-zero elements of tensors.
+        mask=self!=0
+        QNS[~mask]=0
+        raxes=tuple(range(axis)+range(axis+1,self.ndim))
+        qns=QNS.sum(axis=raxes,dtype=QNS.dtype)
+        qns/=mask.sum(axis=raxes)[:,np.newaxis]
+
+        #detect conflicts!
+        if check_conflicts:
+            for i in xrange(len(qns)):
+                qni=QNS.take(i,axis=axis)[self.take(i,axis=axis)!=0]
+                if any(qns[i]!=qni):
+                    raise ValueError()
+
+        bmr=BlockMarker(Nr=np.arange(self.shape[axis]+1),qns=qns)
+        self.labels[axis]=BLabel(self.labels[axis],bmr)
+        return self
+
 
 class Tensor(np.ndarray,TensorBase):
     '''
@@ -323,6 +463,7 @@ class Tensor(np.ndarray,TensorBase):
     def take(self,key,axis):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
 
         #regenerate the labels,
         labels=self.labels[:]
@@ -330,16 +471,19 @@ class Tensor(np.ndarray,TensorBase):
             #0d case, delete a dimension.
             lb=labels.pop(axis)
         elif np.ndim(key)==1:
+            #1d case, shrink a dimension.
+            if key.dtype=='bool':
+                key=np.where(key)[0]
             if hasattr(self.labels[axis],'bm'):
-                #1d case, shrink a dimension.
                 bm=self.labels[axis].bm
-                if key.dtype=='bool':
-                    key=np.where(key)[0]
                 #inflate and take the desired dimensions
                 bm_infl=bm.inflate()
                 qns=bm_infl.qns[key]
                 bm=BlockMarker(qns=qns,Nr=np.arange(len(qns)+1))
                 labels[axis]=labels[axis].chbm(bm)
+            else:
+                #1d case, shrink a dimension.
+                return np.ndarray.take(self,key,axis)
         else:
             raise ValueError
         ts=super(Tensor,self).take(key,axis=axis)
@@ -349,6 +493,7 @@ class Tensor(np.ndarray,TensorBase):
         if not hasattr(self.labels[axis],'bm'): raise ValueError
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
 
         #regenerate the labels, get keys
         labels=self.labels[:]
@@ -390,11 +535,15 @@ class Tensor(np.ndarray,TensorBase):
 
     @inherit_docstring_from(TensorBase)
     def merge_axes(self,sls,nlabel=None,signs=None,bmg=None):
+        start,stop=sls.start,sls.stop
+        if stop is None: stop=self.ndim
+        if start is None: start=0
+        if stop-start<2: return self.make_copy()
         axes=np.mgrid[sls]
         labels=self.labels
         #get new shape
         shape=array(self.shape)
-        newshape=list(shape[:sls.start])+[np.prod(shape[sls])]+list(shape[sls.stop:])
+        newshape=list(shape[:start])+[np.prod(shape[sls])]+list(shape[stop:])
         ts=np.asarray(self.reshape(newshape))
 
         #get new labels
@@ -409,8 +558,8 @@ class Tensor(np.ndarray,TensorBase):
             else:
                 bm_mid=bmg.join_bms([labels[ax].bm for ax in axes],signs=signs)
             nlabel=BLabel(nlabel,bm_mid)
-            #ts=ts.take(pm,axis=sls.start)
-        newlabels=labels[:sls.start]+[nlabel]+labels[sls.stop:]
+            #ts=ts.take(pm,axis=start)
+        newlabels=labels[:start]+[nlabel]+labels[stop:]
 
         #generate the new tensor
         return Tensor(ts,labels=newlabels)
@@ -419,6 +568,7 @@ class Tensor(np.ndarray,TensorBase):
     def split_axis(self,axis,nlabels,dims=None):
         if isinstance(axis,str):
             axis=self.labels.index(axis)
+        if axis<0: axis+=self.ndim
         if dims is None and not all(hasattr(lb,'bm') for lb in nlabels): raise ValueError
         if dims is None: dims=[lb.bm.N for lb in nlabels]
         #get new shape

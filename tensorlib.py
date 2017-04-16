@@ -11,14 +11,14 @@ from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 
 from tba.hgen import c2ind,SuperSpaceConfig,inherit_docstring_from
-from blockmatrix import block_diag,SimpleBMG,BlockMarker
+from blockmatrix import block_diag,SimpleBMG,BlockMarker,trunc_bm
 from tensor import tdot,Tensor,BLabel
 from utils import ldu
 from btensor import BTensor
 
 __all__=['random_tensor','random_bbtensor','check_validity_tensor',
         'gen_eincode','contract','random_btensor','svdbd','random_bdmatrix',
-        'tensor_block_diag']
+        'tensor_block_diag','check_flow_tensor']
 
 def gen_eincode(*labels):
     '''
@@ -376,3 +376,26 @@ def tensor_block_diag(tensors,axes,nlabels=None):
                 ndata[nblk]=data
             offset[axes]+=[t.labels[ax].bm.nblock for ax in axes]
         return BTensor(ndata,newlabel)
+
+def check_flow_tensor(ts,signs,bmg):
+    '''
+    Check the quantum number flow of tensor.
+
+    Parameters:
+        :ts: <Tensor>,
+        :signs: list, flow directions.
+        :bmg: <BlockMarkerGenerator>,
+
+    Return:
+        bool, true if the flow is quantum number conserving.
+    '''
+    ts=ts.merge_axes(slice(0,ts.ndim),bmg=bmg,signs=signs)
+    if isinstance(ts,BTensor):
+        bm=ts.labels[0].bm
+        return all(concatenate([bm.qns[k] for k in ts.data.keys()])==0)
+    else:
+        kpmask=(abs(ts)>1e-10)
+        cbm=trunc_bm(ts.labels[0].bm,kpmask)
+        return all(cbm.qns==0)
+
+

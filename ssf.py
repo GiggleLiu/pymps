@@ -368,11 +368,9 @@ def SSFC2E_F(kets,spaceconfig,maxN=None,usvmode=False):
     SRLS=[]
     for kt,br in [(ket,bra_ket),(ket_bra,bra)]:
         if br is bra:
-            kt.chlabel('site',br.labels[0]+'2')
-            kt.chlabel('link',br.labels[1]+'2')
+            kt.chlabel([br.labels[0]+'2',br.labels[1]+'2'])
         else:
-            br.chlabel('site',kt.labels[0]+'2')
-            br.chlabel('link',kt.labels[1]+'2')
+            br.chlabel([kt.labels[0]+'2',kt.labels[1]+'2'])
         SRL=[]
         res=None
         for i in xrange(nsite/2):

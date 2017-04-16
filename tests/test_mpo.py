@@ -50,6 +50,18 @@ class TestMPO():
         mps=random_mps(hndim=2,nsite=self.mpo.nsite)
         pdb.set_trace()
 
+    def test_insert(self):
+        print 'Test insert and remove.'
+        import copy
+        H0=self.mpo.H
+        seg=self.mpo.OL[3:5]
+        mpo1=copy.copy(self.mpo)
+        mpo1.remove(3,5)
+        assert_(check_validity_mpo(mpo1))
+        mpo1.insert(3,seg)
+        assert_allclose(H0,mpo1.H)
+        assert_(check_validity_mpo(mpo1))
+
     def test_show(self):
         '''
         Test for MPO-MPC convertion.
@@ -71,6 +83,7 @@ class TestMPO():
         assert_allclose(H,H.T.conj(),atol=1e-8)
 
     def test_all(self):
+        self.test_insert()
         self.test_construction()
         self.test_Hcompress()
         self.test_hermicity()
@@ -93,6 +106,18 @@ class TestBMPO():
         H2=mpo.H
         assert_allclose(H1,H2,atol=1e-8)
 
+    def test_insert(self):
+        print 'Test insert and remove.'
+        import copy
+        H0=self.mpo.H
+        seg=self.mpo.OL[3:5]
+        mpo1=deepcopy(self.mpo)
+        mpo1.remove(3,5)
+        assert_(check_validity_mpo(mpo1))
+        mpo1.insert(3,seg)
+        assert_allclose(H0,mpo1.H)
+        assert_(check_validity_mpo(mpo1))
+
     def test_addsum(self):
         mpo=self.mpo
         H1=mpo.H
@@ -111,6 +136,7 @@ class TestBMPO():
         pass
 
     def test_all(self):
+        self.test_insert()
         self.test_Hcompress()
         self.test_addsum()
 

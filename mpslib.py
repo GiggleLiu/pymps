@@ -341,9 +341,11 @@ def random_bmps(bmg,nsite,maxN=50):
     hndim=len(bmg.qns1)
     #first generate block markers.
     bmi=bmg.bm0
+    bm1=bmg.bm1_
     bms=[bmi]
     ML=[]
     for i in xrange(nsite):
+        bmi_pre=bmi
         bmi=bmg.update1(bmi)
         bmi,info=bmi.sort(return_info=True); pm=info['pm']
         bmi=bmi.compact_form()
@@ -362,7 +364,7 @@ def random_bmps(bmg,nsite,maxN=50):
         #unsort left labels, truncate right labels
         ts=ts.take(argsort(pm),axis=0)
         bmi=ts.labels[1].bm
-        ts=reshape(ts,[-1,hndim,ts.shape[-1]])
+        ts=ts.split_axis(0,nlabels=[bmi_pre,bm1],dims=(ts.shape[0]/hndim,hndim))
         bms.append(bmi)
         ML.append(ts)
     mps=mPS(ML=ML,l=nsite,S=ones(1),bmg=bmg)

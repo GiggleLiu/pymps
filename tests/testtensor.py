@@ -362,6 +362,19 @@ def test_svdbd():
     U2,S2,V2=svdbd(ts.tobtensor())
     assert_allclose(ts,((U2.mul_axis(S2,-1))*V2).todense())
 
+def test_tensor_svd():
+    print 'Test @Tensor.svd'
+    spaceconfig=SpinSpaceConfig([1,2])
+    bmg=SimpleBMG(spaceconfig=spaceconfig,qstring='M')
+    bm1=bmg.bm1_   #[1, -1]
+    bm2=BlockMarker(qns=array([[0],[2]],dtype=bm1.qns.dtype),Nr=[0,2,3])
+    t=Tensor([[[0,0,-1],[3,2,0]],[[4,9,0],[0,0,0]]],labels=[BLabel('X',bm1),BLabel('Y',bm1),BLabel('Z',bm2)])
+    assert_(check_flow_tensor(t,signs=[-1,-1,1],bmg=bmg))
+    for cbond in [1,2]:
+        print 'cbound = ',cbond
+        U,S,V=t.svd(cbond=1,cbond_str='C',signs=[-1,-1,1],bmg=bmg)
+        assert_allclose(t-U.mul_axis(S,cbond)*V,0,atol=1e-8)
+
 def test_blabel():
     print 'test BLabel. chbm,chstr'
     bl=BLabel('x',BlockMarker(Nr=[0,1,3]))
@@ -384,6 +397,7 @@ def test_blabel():
     assert_(bl==bl3 and bl.bm==bl3.bm)
 
 if __name__=='__main__':
+    test_tensor_svd()
     TestBTensor2D().test_all()
     TestBTensor3D().test_all()
     test_btensor()

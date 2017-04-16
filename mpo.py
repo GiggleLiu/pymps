@@ -10,10 +10,9 @@ import copy
 import pdb,time,warnings,numbers
 
 from tensor import Tensor
-from tensorlib import svdbd
 from tba.hgen.op import _format_factor
 from blockmatrix import block_diag
-from mps import _autoset_bms
+from mps import _autoset_bms,_auto_label,_replace_cells
 from flib import fmerge_mpo
 
 __all__=['OpUnit','OpString','OpCollection','MPO','MPOConstructor','OpUnitI','WL2MPO','WL2OPC','BMPO']
@@ -1020,6 +1019,9 @@ class MPO(MPOBase):
         else:
             raise TypeError()
 
+    def __copy__(self):
+        return MPO(self.OL[:],self.labels[:])
+
     @property
     def hndim(self):
         '''The number of state in a single site.'''
@@ -1068,6 +1070,25 @@ class MPO(MPOBase):
     def set(self,i,A,*args,**kwargs):
         self.OL[i]=A
 
+    def insert(self,pos,cells):
+        '''
+        Insert cells into MPO.
+
+        Parameters:
+            :cells: list, tensors.
+        '''
+        _replace_cells(self,slice(pos,pos),cells)
+
+    def remove(self,start,stop):
+        '''
+        Remove a segment from MPS.
+
+        Parameters:
+            :start: int,
+            :stop: int,
+        '''
+        _replace_cells(self,slice(start,stop),[])
+
     def get_all(self):
         return self.OL[:]
  
@@ -1081,14 +1102,15 @@ class MPO(MPOBase):
             raise ValueError('Link index out of range!')
 
     def chlabel(self,labels):
-        nsite=self.nsite
         self.labels=labels
-        slabel1,slabel2,llabel=labels
-        for l,ai in enumerate(self.OL):
-            ai.labels[0]='%s_%s'%(llabel,l)
-            ai.labels[1]='%s_%s'%(slabel1,l)
-            ai.labels[2]='%s_%s'%(slabel2,l)
-            ai.labels[3]='%s_%s'%(llabel,l+1)
+        _auto_label(self.OL,labels)
+        #nsite=self.nsite
+        #slabel1,slabel2,llabel=labels
+        #for l,ai in enumerate(self.OL):
+        #    ai.labels[0]='%s_%s'%(llabel,l)
+        #    ai.labels[1]='%s_%s'%(slabel1,l)
+        #    ai.labels[2]='%s_%s'%(slabel2,l)
+        #    ai.labels[3]='%s_%s'%(llabel,l+1)
 
     def compress(self,niter=2,tol=1e-8,maxN=Inf,kernal='svd'):
         nsite=self.nsite
@@ -1112,14 +1134,7 @@ class MPO(MPOBase):
                 cbond_str=B.labels[llink_axis]
                 #contract AB,
                 AB=A*B
-                #transform it into matrix form and do svd.
-                if use_bm:
-                    AB=AB.merge_axes(bmg=self.bmg,sls=slice(0,3),signs=[1,1,-1]).merge_axes(bmg=self.bmg,sls=slice(1,4),signs=[-1,1,1])
-                    AB,pms=AB.b_reorder(return_pm=True)
-                    U,S,V=svdbd(AB,cbond_str=cbond_str,kernal=kernal)
-                else:
-                    AB=AB.reshape([-1,prod(AB.shape[3:])])
-                    U,S,V=svd(AB,full_matrices=False)
+                U,S,V=AB.svd(cbond=3,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,-1,1,1])
 
                 #truncation
                 if maxN<S.shape[0]:
@@ -1127,13 +1142,8 @@ class MPO(MPOBase):
                 kpmask=S>tol
                 acc*=(1-sum(S[~kpmask]**2))
 
-                #unpermute blocked U,V and set data
-                if use_bm:
-                    U,S,V=U.take(kpmask,axis=1)[argsort(pms[0])],S[kpmask],V.take(kpmask,axis=0)[:,argsort(pms[1])]
-                    clabel=U.labels[1]
-                else:
-                    U,S,V=U[:,kpmask],S[kpmask],V[kpmask]
-                    clabel=cbond_str
+                #set data
+                U,S,V=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
                 nS=norm(S); S/=nS
                 if right:
                     U*=nS
@@ -1144,8 +1154,8 @@ class MPO(MPOBase):
                     U=U*S
 
                 #set datas
-                self.set(l-1,Tensor(U.reshape([-1,hndim,hndim,U.shape[-1]]),labels=A.labels[:3]+[clabel]))
-                self.set(l,Tensor(V.reshape([V.shape[0],hndim,hndim,-1]),labels=[clabel]+B.labels[1:]))
+                self.set(l-1,U)
+                self.set(l,V)
         return self,1-acc
 
 class BMPO(MPO):
@@ -1169,14 +1179,15 @@ class BMPO(MPO):
         return MPO(self.OL[:],labels=self.labels[:])
 
     def chlabel(self,labels):
-        nsite=self.nsite
         self.labels=labels
-        slabel1,slabel2,llabel=labels
-        for l,ai in enumerate(self.OL):
-            ai.labels=[ai.labels[0].chstr('%s_%s'%(llabel,l)),
-            ai.labels[1].chstr('%s_%s'%(slabel1,l)),
-            ai.labels[2].chstr('%s_%s'%(slabel2,l)),
-            ai.labels[3].chstr('%s_%s'%(llabel,l+1))]
+        _auto_label(self.OL,labels)
+        #nsite=self.nsite
+        #slabel1,slabel2,llabel=labels
+        #for l,ai in enumerate(self.OL):
+        #    ai.labels=[ai.labels[0].chstr('%s_%s'%(llabel,l)),
+        #    ai.labels[1].chstr('%s_%s'%(slabel1,l)),
+        #    ai.labels[2].chstr('%s_%s'%(slabel2,l)),
+        #    ai.labels[3].chstr('%s_%s'%(llabel,l+1))]
 
 class PMPO(MPOBase):
     '''

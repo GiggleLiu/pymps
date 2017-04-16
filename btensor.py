@@ -61,6 +61,9 @@ class BTensor(TensorBase):
             s+='\n%s -> %s'%(blk,'x'.join(str(x) for x in data.shape))
         return s
 
+    def __repr__(self):
+        return '<BTensor(%s)>'%(','.join([lb+'*' for lb in self.labels]),)
+
     def __abs__(self):
         return BTensor(dict((key,abs(data)) for key,data in self.data.iteritems()),self.labels[:])
 
@@ -297,7 +300,8 @@ class BTensor(TensorBase):
                 nblk=blk[:axis]+tuple(nb)+blk[axis+1:]
                 nshape=tuple(bm.blocksize(bi) for bm,bi in zip(bms,nb))
                 if not ndata.has_key(nblk): ndata[nblk]=np.zeros(data.shape[:axis]+nshape+data.shape[axis+1:],dtype=self.dtype)
-                ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.take(ii,axis).reshape(data.shape[:axis]+(1,)*len(nlabels)+data.shape[axis+1:])
+                ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.take(ii,axis).reshape(data.shape[:axis]+data.shape[axis+1:])
+                #ndata[nblk][(slice(None),)*axis+tuple(nc)]=data.take(ii,axis).reshape(data.shape[:axis]+(1,)*len(nlabels)+data.shape[axis+1:])
         return BTensor(ndata,labels=newlabels)
 
     def split_axis_b(self,axis,nlabels,**kwargs):
