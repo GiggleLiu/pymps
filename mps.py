@@ -65,6 +65,7 @@ def _autoset_bms(TL,bmg,bml0=None,reorder=False,check_conflicts=False):
         list, tensors with block marker set.
     '''
     nsite=len(TL)
+    if nsite==0: return
     bm1=bmg.bm1_
     is_mps=ndim(TL[0])==3
     pm=slice(None)
@@ -112,8 +113,12 @@ def _replace_cells(mpx,sls,cells):
     start,stop=sls.start,sls.stop
     ncell=len(cells)
     is_mps=hasattr(mpx,'S')
-    if is_mps and mpx.l>=stop:
-        mpx.l+=ncell
+    if is_mps:
+        if mpx.l>=stop:
+            mpx.l+=ncell-stop-start
+        elif mpx.l>start:
+            mpx.l=start
+            mpx.S=identity(mpx.check_bond(start))
     if is_mps:
         #insert cells
         mpx.ML=mpx.ML[:start]+list(cells)+mpx.ML[stop:]
@@ -124,7 +129,8 @@ def _replace_cells(mpx,sls,cells):
 
     #adjust block markers
     if hasattr(mpx,'bmg'):
-        _autoset_bms(mpx.ML[start:] if is_mps else mpx.OL[start:],bmg=mpx.bmg,bml0=mpx.get(start-1).labels[-1].bm,reorder=False,check_conflicts=False)
+        bm0=mpx.get(start-1).labels[-1].bm if start>0 else (mpx.get(start).labels[0].bm if ncell==0 else None)
+        _autoset_bms(mpx.ML[start:] if is_mps else mpx.OL[start:],bmg=mpx.bmg,bml0=bm0,reorder=False,check_conflicts=False)
 
 class MPSBase(object):
     '''
