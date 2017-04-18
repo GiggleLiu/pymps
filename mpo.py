@@ -966,7 +966,7 @@ class MPOBase(object):
         pass
 
     @abstractmethod
-    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernal='svd'):
+    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernel='svd'):
         '''
         Move l-index by one with specific direction.
         
@@ -974,7 +974,7 @@ class MPOBase(object):
             :niter: int, number of iteractions.
             :tol: float, the tolerence for compression.
             :maxN: int, the maximum dimension.
-            :kernel: 'svd'/'ldu', the compressing kernel.
+            :kernel: 'svd'/'ldu'/'dpl', the compressing kernel.
 
         Return:
             float, approximate truncation error.
@@ -1104,17 +1104,11 @@ class MPO(MPOBase):
     def chlabel(self,labels):
         self.labels=labels
         _auto_label(self.OL,labels)
-        #nsite=self.nsite
-        #slabel1,slabel2,llabel=labels
-        #for l,ai in enumerate(self.OL):
-        #    ai.labels[0]='%s_%s'%(llabel,l)
-        #    ai.labels[1]='%s_%s'%(slabel1,l)
-        #    ai.labels[2]='%s_%s'%(slabel2,l)
-        #    ai.labels[3]='%s_%s'%(llabel,l+1)
 
-    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernal='svd'):
+    def compress(self,niter=2,tol=1e-8,maxN=Inf,kernel='svd'):
         nsite=self.nsite
         hndim=self.hndim
+        len2k=kernel=='dpl'
         use_bm=hasattr(self,'bmg')
         llink_axis,rlink_axis,s1_axis,s2_axis=0,3,1,2
         acc=1.
@@ -1134,24 +1128,29 @@ class MPO(MPOBase):
                 cbond_str=B.labels[llink_axis]
                 #contract AB,
                 AB=A*B
-                U,S,V=AB.svd(cbond=3,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,-1,1,1])
+                ckernel=kernel
+                if kernel=='dpl': ckernel=ckernel+('_c' if right else '_r')
+                data=AB.svd(cbond=3,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,-1,1,1],kernel=ckernel)
+                U,V=data[0],data[-1]
 
-                #truncation
-                if maxN<S.shape[0]:
-                    tol=max(S[maxN],tol)
-                kpmask=S>tol
-                acc*=(1-sum(S[~kpmask]**2))
+                if not len2k:
+                    S=data[1]
+                    #truncation
+                    if maxN<S.shape[0]:
+                        tol=max(S[maxN],tol)
+                    kpmask=S>tol
+                    acc*=(1-sum(S[~kpmask]**2))
 
-                #set data
-                U,S,V=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
-                nS=norm(S); S/=nS
-                if right:
-                    U*=nS
-                else:
-                    V*=nS
+                    #set data
+                    U,S,V=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
+                    nS=norm(S); S/=nS
+                    if right:
+                        U*=nS
+                    else:
+                        V*=nS
                 if iit==niter-1 and ((right and l==nsite-1) or (not right and l==1)):  #stop condition.
                     print 'Compression of MPO Done!'
-                    U=U*S
+                    if not len2k: U=U*S
 
                 #set datas
                 self.set(l-1,U)
@@ -1181,13 +1180,6 @@ class BMPO(MPO):
     def chlabel(self,labels):
         self.labels=labels
         _auto_label(self.OL,labels)
-        #nsite=self.nsite
-        #slabel1,slabel2,llabel=labels
-        #for l,ai in enumerate(self.OL):
-        #    ai.labels=[ai.labels[0].chstr('%s_%s'%(llabel,l)),
-        #    ai.labels[1].chstr('%s_%s'%(slabel1,l)),
-        #    ai.labels[2].chstr('%s_%s'%(slabel2,l)),
-        #    ai.labels[3].chstr('%s_%s'%(llabel,l+1))]
 
 class PMPO(MPOBase):
     '''

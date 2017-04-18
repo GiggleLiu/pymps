@@ -17,9 +17,8 @@ from mpolib import *
 from mpslib import *
 from contraction import *
 from mps import MPS
-from contraction import Contractor
 from pydavidson import gs
-from utils import fast_svd,ldu
+from utils import fast_svd,ldu,dpl
 from blockmatrix import SimpleBMG
 
 def test_fastsvd():
@@ -48,12 +47,25 @@ def test_fastsvd():
     print 'Elapse -> %s(old->%s) tol->%s'%(t1-t0,t2-t1,norm(Sf-S0))
 
 def test_ldu():
+    print 'Test LDU'
     A=random.random([10,10])
     L,D,U=ldu(A)
     assert_allclose((L*D).dot(U),A,atol=1e-8)
     assert_(sum(abs(L>1e-8))<=55)
     assert_(sum(abs(U>1e-8))<=55)
 
+def test_dpl():
+    print 'Test DPL, col wise'
+    A=array([[1,2,3],[4,5,6],[0,0,0],[2,4,6]])
+    M,T=dpl(A.T,1)
+    assert_(M.shape[1]==2)
+    assert_allclose(M.dot(T),A.T)
+    print 'Test DPL, row wise'
+    M,T=dpl(A,0)
+    assert_(M.shape[0]==2)
+    assert_allclose(T.T.dot(M),A)
+
 if __name__=='__main__':
+    test_dpl()
     test_ldu()
     test_fastsvd()

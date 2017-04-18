@@ -246,14 +246,14 @@ def svdbd_map(A,mapping_rule=None,full_matrices=False):
     VL=array(VL)[order]
     return block_diag(*UL),array(sps.bmat(Smat)),block_diag(*VL),array(sps.bmat(Smat2))
 
-def svdbd(A,cbond_str='X',kernal='svd'):
+def svdbd(A,cbond_str='X',kernel='svd'):
     '''
     Get the svd decomposition for dense tensor with block structure.
 
     Parameters:
         :A: 2D<Tensor>, the input matrix, with <BLabel>s.
         :cbond_str: str, the labes string for center bond.
-        :kernal: 'svd'/'ldu', the kernal of svd decomposition.
+        :kernel: 'svd'/'ldu', the kernel of svd decomposition.
 
     Return:
         (U,S,V) that U*S*V = A
@@ -262,9 +262,9 @@ def svdbd(A,cbond_str='X',kernal='svd'):
     bm1,bm2=A.labels[0].bm,A.labels[1].bm
     #add support for null block marker
     if bm1.qns.shape[1]==0:
-        if kernal=='svd':
+        if kernel=='svd':
             U,S,V=svd(A,full_matrices=False,lapack_driver='gesvd')
-        elif kernal=='ldu':
+        elif kernel=='ldu':
             U,S,V=ldu(A)
         else:
             raise ValueError()
@@ -284,9 +284,9 @@ def svdbd(A,cbond_str='X',kernal='svd'):
     UL,SL,VL=[],[],[]
     for c1,c2 in zip(cqns1,cqns2):
         cell=A.get_block((c1,c2))
-        if kernal=='svd':
+        if kernel=='svd':
             Ui,Si,Vi=svd(cell,full_matrices=False,lapack_driver='gesvd')
-        elif kernal=='ldu':
+        elif kernel=='ldu':
             Ui,Si,Vi=ldu(cell)
         else:
             raise ValueError()

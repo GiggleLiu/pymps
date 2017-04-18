@@ -10,7 +10,7 @@ from scipy.sparse.linalg import LinearOperator
 import cPickle as pickle
 import pdb
 
-__all__=['icgs','fast_svd','eigen_cholesky','inherit_docstring_from','quicksave','quickload']
+__all__=['icgs','fast_svd','eigen_cholesky','inherit_docstring_from','quicksave','quickload','dpl','ldu']
 
 def icgs(u,Q,M=None,colwise=True,return_norm=False):
     '''
@@ -112,5 +112,41 @@ def ldu(A):
     '''LDU decomposition.'''
     L,U=lu(A,permute_l=True)
     D=norm(U,axis=1)
-    U=U/D[:,newaxis]
+    nzmask=D!=0
+    U[nzmask]/=D[nzmask,newaxis]
     return L,D,U
+
+def dpl(A,axis,tol=1e-12):
+    '''DeParallelize, MT = A.'''
+    axes=range(A.ndim); axes.remove(axis); axes=tuple(axes)
+    nA=norm(A,axis=axes)
+    #check for zeros
+    nz_inds=where(nA>tol)[0]
+    AA=asarray(A).take(nz_inds,axis=axis)
+    nA=nA[nz_inds]
+    Au=AA/nA.reshape([-1]+[1]*(AA.ndim-axis-1))
+    Au=Au.view(ndarray)
+    #Au=AA.mul_axis(1./norm(AA,axis=axes),axis=axis)
+    groups=[]
+    unique_cols=[]
+    ratios=[]
+    mask=zeros(AA.shape[axis],dtype='bool')
+    for ci in xrange(AA.shape[axis]):
+        if mask[ci]: continue
+        v1=Au.take([ci],axis=axis)
+        remaining_indices=where(~mask)[0]
+        au=Au.take(remaining_indices,axis=axis)
+        overlap=(v1.conj()*au).sum(axis=axes)
+        seq_cs=where(1-abs(overlap)<tol)[0]
+        eq_cs=remaining_indices[seq_cs]
+
+        groups.append(eq_cs)
+        ratios.append(nA[eq_cs]/nA[ci]*overlap[seq_cs])
+        unique_cols.append(ci)
+        #update mask
+        mask[eq_cs]=True
+    M=AA.take(unique_cols,axis=axis)
+    T=zeros((M.shape[axis],A.shape[axis]),dtype='float64' if A.dtype!='complex128' else 'complex128')
+    for i,(cols,ratio) in enumerate(zip(groups,ratios)):
+        T[i,nz_inds[cols]]=ratio
+    return (M,T) if axis>=1 else (T.T,M)

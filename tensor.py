@@ -8,7 +8,7 @@ from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 import copy,pdb,numbers,itertools
 
-from utils import inherit_docstring_from,ldu
+from utils import inherit_docstring_from,ldu,dpl
 from blockmatrix import join_bms,BlockMarker,block_diag
 
 __all__=['TensorBase','Tensor','tdot','BLabel']
@@ -232,24 +232,31 @@ class TensorBase(object):
         self.labels=labels
         return self
 
-    def svd(self,cbond,cbond_str='_O_',kernal='svd',signs=None,bmg=None):
+    def svd(self,cbond,cbond_str='_O_',kernel='svd',signs=None,bmg=None):
         '''
         Get the svd decomposition for dense tensor with block structure.
 
         Parameters:
             :cbond: int, the bound to perform svd.
             :cbond_str: str, the labes string for center bond.
-            :kernal: 'svd'/'ldu', the kernal of svd decomposition.
+            :kernel: 'svd'/'ldu'/'dpl_r'/'dpl_c', the kernel of svd decomposition.
             :signs: list,
             :bmg: <BlockMarkerGenerator>,
 
         Return:
             (U,S,V) that U*S*V = A
         '''
-        if kernal=='svd':
+        len2k=False   #using len-2 kernels.
+        if kernel=='svd':
             csvd=lambda cell: svd(cell,full_matrices=False,lapack_driver='gesvd')
-        elif kernal=='ldu':
+        elif kernel=='ldu':
             csvd=lambda cell: ldu(cell)
+        elif kernel=='dpl_r':
+            csvd=lambda cell: dpl(cell,axis=0)
+            len2k=True
+        elif kernel=='dpl_c':
+            csvd=lambda cell: dpl(cell,axis=1)
+            len2k=True
         else:
             raise ValueError()
         from btensor import BTensor
@@ -260,18 +267,20 @@ class TensorBase(object):
             #first, find the block structure and make it block diagonal
             M=self.merge_axes(sls=slice(cbond,self.ndim),nlabel='_X_',signs=signs[cbond:],bmg=bmg).merge_axes(sls=slice(0,cbond),nlabel='_Y_',signs=signs[:cbond],bmg=bmg)
             if M.labels[0].bm.qns.shape[1]==0:
-                U,S,V=csvd(M)
-                center_label=BLabel(cbond_str,BlockMarker(qns=np.zeros([1,0],dtype='int32'),Nr=array([0,len(S)])))
+                data=csvd(M)
+                U,V=data[0],data[-1]
+                center_label=BLabel(cbond_str,BlockMarker(qns=np.zeros([1,0],dtype='int32'),Nr=array([0,V.shape[0]])))
                 U=Tensor(U,labels=[M.labels[0],center_label])
                 V=Tensor(V,labels=[center_label,M.labels[1]])
-                return U,S,V
+                return (U,data[1],V) if not len2k else (U,V)
         else:
             M=self.merge_axes(sls=slice(cbond,self.ndim),nlabel='_X_').merge_axes(sls=slice(0,cbond),nlabel='_Y_')
             #perform svd and roll back to original non-block structure
-            U,S,V=csvd(M)
-            U=Tensor(U.reshape(self.shape[:cbond]+(S.shape[0],)),labels=self.labels[:cbond]+[cbond_str])
-            V=Tensor(V.reshape((S.shape[0],)+self.shape[cbond:]),labels=[cbond_str]+self.labels[cbond:])
-            return U,S,V
+            data=csvd(M)
+            U,V=data[0],data[-1]
+            U=Tensor(U.reshape(self.shape[:cbond]+(U.shape[-1],)),labels=self.labels[:cbond]+[cbond_str])
+            V=Tensor(V.reshape((V.shape[0],)+self.shape[cbond:]),labels=[cbond_str]+self.labels[cbond:])
+            return (U,data[1],V) if not len2k else (U,V)
 
         M,pms=M.b_reorder(return_pm=True)
         #check and prepair datas
@@ -288,14 +297,15 @@ class TensorBase(object):
         UL,SL,VL=[],[],[]
         for c1,c2 in zip(cqns1,cqns2):
             cell=M.get_block((c1,c2))
-            Ui,Si,Vi=csvd(cell)
-            UL.append(Ui); SL.append(Si); VL.append(Vi)
+            data=csvd(cell)
+            UL.append(data[0]); VL.append(data[-1])
+            if not len2k: SL.append(data[1])
 
         #get center BLabel and S
-        nr=[len(si) for si in SL]
+        nr=[vi.shape[0] for vi in VL]
         Nr=np.append([0],np.cumsum(nr))
         b0=BLabel(cbond_str,BlockMarker(Nr=Nr,qns=common_qns_2d))
-        S=np.concatenate(SL)
+        if not len2k: S=np.concatenate(SL)
 
         #get U, V
         if isinstance(M,Tensor):
@@ -325,7 +335,7 @@ class TensorBase(object):
         #U,V=U.take(np.argsort(pms[0]),axis=0).split_axis(axis=0,nlabels=self.labels[:cbond],dims=self.shape[:cbond]),V.take(np.argsort(pms[1]),axis=1).split_axis(axis=1,nlabels=self.labels[cbond:],dims=self.shape[cbond:])
         U,V=U.take(np.argsort(pms[0]),axis=0),V.take(np.argsort(pms[1]),axis=1)
         U,V=U.split_axis(axis=0,nlabels=self.labels[:cbond],dims=self.shape[:cbond]),V.split_axis(axis=1,nlabels=self.labels[cbond:],dims=self.shape[cbond:])
-        return U,S,V
+        return (U,S,V) if not len2k else (U,V)
 
     def autoflow(self,axis,bmg,signs,check_conflicts=False):
         '''
@@ -472,6 +482,7 @@ class Tensor(np.ndarray,TensorBase):
             lb=labels.pop(axis)
         elif np.ndim(key)==1:
             #1d case, shrink a dimension.
+            key=np.asarray(key)
             if key.dtype=='bool':
                 key=np.where(key)[0]
             if hasattr(self.labels[axis],'bm'):

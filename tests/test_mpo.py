@@ -99,11 +99,25 @@ class TestBMPO():
         assert_(check_flow_mpx(self.mpo))
 
     def test_Hcompress(self):
-        print 'Checking compressing!'
-        mpo=self.mpo
+        print 'Checking compressing! using svd'
+        mpo=deepcopy(self.mpo)
+        nnz0=mpo.nnz
         H1=mpo.H
-        mpo.compress()
+        mpo.compress(kernel='svd')
+        H3=mpo.H
+        print 'Rate = %s'%(1.*mpo.nnz/nnz0)
+        assert_allclose(H1,H3,atol=1e-8)
+        print 'Checking compressing! using dpl'
+        mpo=deepcopy(self.mpo)
+        mpo.compress(kernel='dpl')
         H2=mpo.H
+        print 'Rate = %s'%(1.*mpo.nnz/nnz0)
+        assert_allclose(H1,H2,atol=1e-8)
+        print 'Checking compressing! using ldu'
+        mpo=deepcopy(self.mpo)
+        mpo.compress(kernel='ldu')
+        H2=mpo.H
+        print 'Rate = %s'%(1.*mpo.nnz/nnz0)
         assert_allclose(H1,H2,atol=1e-8)
 
     def test_insert(self):
