@@ -14,6 +14,7 @@ from tba.hgen.op import _format_factor
 from blockmatrix import block_diag
 from mps import _autoset_bms,_auto_label,_replace_cells
 from flib import fmerge_mpo
+from sweep import get_sweeper,get_psweeper
 
 __all__=['OpUnit','OpString','OpCollection','MPO','MPOConstructor','OpUnitI','WL2MPO','WL2OPC','BMPO']
 UNSETTLED='-'
@@ -1113,48 +1114,46 @@ class MPO(MPOBase):
         llink_axis,rlink_axis,s1_axis,s2_axis=0,3,1,2
         acc=1.
         S=ones(1)
-        for iit in xrange(niter):
-            #decide sweep variables
-            right=iit%2==0
-            iterator=xrange(1,nsite) if right else xrange(nsite-2,0,-1)
-            for l in iterator:
-                #prepair the tensor, Get A,B matrix
+        sweeper=get_sweeper(start=(0,'->',0),stop=(niter,'<-',0),nsite=nsite-2)
+        for itervar in sweeper:
+            iit,direction,l=itervar
+            right=direction=='->'  #right moving
+            l=l+1
+            #prepair the tensor, Get A,B matrix
+            if right:
+                A=self.get(l-1).mul_axis(S,llink_axis)
+                B=self.get(l)
+            else:
+                B=self.get(l).mul_axis(S,rlink_axis)
+                A=self.get(l-1)
+            cbond_str=B.labels[llink_axis]
+            #contract AB,
+            AB=A*B
+            ckernel=kernel
+            if kernel=='dpl': ckernel=ckernel+('_c' if right else '_r')
+            data=AB.svd(cbond=3,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,-1,1,1],kernel=ckernel)
+            U,V=data[0],data[-1]
+
+            if not len2k:
+                S=data[1]
+                #truncation
+                if maxN<S.shape[0]:
+                    tol=max(S[maxN],tol)
+                kpmask=S>tol
+                acc*=(1-sum(S[~kpmask]**2))
+
+                #set data
+                U,S,V=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
+                nS=norm(S); S/=nS
                 if right:
-                    A=self.get(l-1).mul_axis(S,llink_axis)
-                    B=self.get(l)
+                    U*=nS
                 else:
-                    B=self.get(l).mul_axis(S,rlink_axis)
-                    A=self.get(l-1)
-                cbond_str=B.labels[llink_axis]
-                #contract AB,
-                AB=A*B
-                ckernel=kernel
-                if kernel=='dpl': ckernel=ckernel+('_c' if right else '_r')
-                data=AB.svd(cbond=3,cbond_str=cbond_str,bmg=self.bmg if hasattr(self,'bmg') else None,signs=[1,1,-1,-1,1,1],kernel=ckernel)
-                U,V=data[0],data[-1]
+                    V*=nS
 
-                if not len2k:
-                    S=data[1]
-                    #truncation
-                    if maxN<S.shape[0]:
-                        tol=max(S[maxN],tol)
-                    kpmask=S>tol
-                    acc*=(1-sum(S[~kpmask]**2))
-
-                    #set data
-                    U,S,V=U.take(kpmask,axis=-1),S[kpmask],V.take(kpmask,axis=0)
-                    nS=norm(S); S/=nS
-                    if right:
-                        U*=nS
-                    else:
-                        V*=nS
-                if iit==niter-1 and ((right and l==nsite-1) or (not right and l==1)):  #stop condition.
-                    print 'Compression of MPO Done!'
-                    if not len2k: U=U*S
-
-                #set datas
-                self.set(l-1,U)
-                self.set(l,V)
+            #set datas
+            self.set(l-1,U)
+            self.set(l,V)
+        self.set(l-1,U*S)
         return self,1-acc
 
 class BMPO(MPO):

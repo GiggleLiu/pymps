@@ -12,6 +12,8 @@ import pdb
 
 __all__=['icgs','fast_svd','eigen_cholesky','inherit_docstring_from','quicksave','quickload','dpl','ldu']
 
+ZERO_REF=1e-12
+
 def icgs(u,Q,M=None,colwise=True,return_norm=False):
     '''
     Iterative Classical M-orthogonal Gram-Schmidt orthogonalization.
