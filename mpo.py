@@ -159,10 +159,14 @@ class OpUnit(object):
             if target.siteindex==self.siteindex:
                 if target.fermionic!=self.fermionic:
                     raise Exception('Can not add opunits with difference parity!')
-                return OpUnit(label=self.label+'+'+target.label,data=self.factor*self.data+target.factor*target.data,siteindex=self.siteindex,math_str=self.__math_str__+'+'+target.__math_str__,fermionic=self.fermionic)
+                return OpUnit(label='%s%s+%s%s'%(_format_factor(self.factor),self.label,_format_factor(target.factor),target.label),\
+                        data=self.factor*self.data+target.factor*target.data,siteindex=self.siteindex,\
+                        math_str='%s%s+%s%s'%(_format_factor(self.factor),self.__math_str__,_format_factor(target.factor),target.__math_str__),fermionic=self.fermionic)
             else:
                 return OpCollection([self,target])
         elif isinstance(target,OpString):
+            if target.nunit==1:
+                return self.__add__(target.opunits[0])
             return OpCollection([self,target])
         else:
             raise TypeError('Can not add %s with %s.'%(self.__class__,target.__class__))
@@ -326,8 +330,16 @@ class OpString():
     def __add__(self,target):
         if isinstance(target,OpCollection):
             return target.__radd__(self)
-        elif isinstance(target,(OpString,OpUnit)):
-            return OpCollection([self,target])
+        elif isinstance(target,OpString):
+            if self.nunit==1 and target.nunit==1:
+                return self.opunits[0]+target.opunits[1]
+            else:
+                return OpCollection([self,target])
+        elif isinstance(target,OpUnit):
+            if self.nunit==1:
+                return self.opunits[0]+target
+            else:
+                return OpCollection([self,target])
         elif target==0:
             return copy.copy(self)
         else:
@@ -659,8 +671,21 @@ class OpCollection(object):
             raise TypeError('Can not multiply OpCollection with %s'%target.__class__)
 
     def __add__(self,target):
-        if isinstance(target,(OpUnit,OpString)):
+        if isinstance(target,OpString):
+            if target.nunit==1:
+                return self.__add__(target.opunits[0])
             return OpCollection(self.ops+[target])
+        elif isinstance(target,OpUnit):
+            ops_new=self.ops[:]
+            merge=False
+            for i,opi in enumerate(ops_new):
+                if isinstance(opi,OpUnit) and opi.siteindex==target.siteindex:
+                    merge=True
+                    ops_new[i]=opi+target
+                    break
+            if not merge:
+                ops_new.append(target)
+            return OpCollection(ops_new)
         elif isinstance(target,OpCollection):
             return OpCollection(self.ops+target.ops)
         elif target==0:
@@ -669,8 +694,21 @@ class OpCollection(object):
             raise TypeError('Can not add %s with %s.'%(self.__class__,target.__class__))
 
     def __radd__(self,target):
-        if isinstance(target,(OpUnit,OpString)):
+        if isinstance(target,OpString):
+            if target.nunit==1:
+                return self.__radd__(target.opunits[0])
             return OpCollection([target]+self.ops)
+        elif isinstance(target,OpUnit):
+            ops_new=self.ops[:]
+            merge=False
+            for i,opi in enumerate(ops_new):
+                if isinstance(opi,OpUnit) and opi.siteindex==target.siteindex:
+                    merge=True
+                    ops_new[i]=target+opi
+                    break
+            if not merge:
+                ops_new.append(target)
+            return OpCollection(ops_new)
         elif isinstance(target,OpCollection):
             return target.__add__(self)
         elif target==0:
@@ -679,8 +717,19 @@ class OpCollection(object):
             raise TypeError('Can not add %s with %s.'%(target.__class__,self.__class__))
 
     def __iadd__(self,target):
-        if isinstance(target,(OpString,OpUnit)):
+        if isinstance(target,OpString):
+            if target.nunit==1:
+                return self.__iadd__(target.opunits[0])
             self.ops.append(target)
+        elif isinstance(target,OpUnit):
+            ops_new=self.ops
+            merge=False
+            for i,opi in enumerate(ops_new):
+                if isinstance(opi,OpUnit) and opi.siteindex==target.siteindex:
+                    merge=True
+                    ops_new[i]=target+opi
+                if not merge:
+                    ops_new.append(target)
         elif isinstance(target,OpCollection):
             self.ops.extend(target.ops)
         else:
