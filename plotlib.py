@@ -3,7 +3,6 @@ from matplotlib.pyplot import *
 from matplotlib import patches
 from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d import Axes3D
-from mpo import OpString,OpUnit,OpCollection
 from numpy import *
 from numpy.linalg import norm
 import pdb
@@ -459,7 +458,7 @@ def show_opc_advanced(opc,nsite=0,offset=(0,0)):
     occ_dict={}
     for i in xrange(opc.nop):
         opi=opc.ops[i]
-        siteindex=opi.siteindex if isinstance(opi,OpString) else [opi.siteindex]
+        siteindex=opi.siteindex if hasattr(opi,'opunits') else [opi.siteindex]
         y0=offset[1]
         assert(len(siteindex)<=2)  #only two site interaction is allowing.
         direction=1

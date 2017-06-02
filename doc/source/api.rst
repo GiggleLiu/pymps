@@ -51,23 +51,23 @@ MPS Related Functions
 
 Operator Representations
 ----------------------------
-.. automodule:: mpo
-
-.. autoclass:: mpo.OpUnit
+.. automodule:: opstring
+.. autoclass:: opstring.OpUnit
     :show-inheritance:
     :members: hndim,siteindices,maxsite,as_site,H,get_mathstr,get_data,toMPO
 
-.. autoclass:: mpo.OpUnitI
+.. autoclass:: opstring.OpUnitI
     :show-inheritance:
 
-.. autoclass:: mpo.OpString
+.. autoclass:: opstring.OpString
     :show-inheritance:
     :members: get_mathstr,siteindices,maxsite,H,toMPO,query
 
-.. autoclass:: mpo.OpCollection
+.. autoclass:: opstring.OpCollection
     :show-inheritance:
     :members: maxsite,H,toMPO,query,filter
 
+.. automodule:: mpo
 .. autoclass:: mpo.MPO
     :show-inheritance:
     :members: hndim,nsite,H,get,set,check_link,use_bm,chlabel,compress
@@ -75,6 +75,10 @@ Operator Representations
 .. autoclass:: mpo.BMPO
     :show-inheritance:
     :members: unuse_bm
+
+.. autofunction:: mpo.OPC2MPO
+.. autofunction:: mpo.WL2MPO
+.. autofunction:: mpo.WL2OPC
 
 MPO Related Functions
 ------------------------------

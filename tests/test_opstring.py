@@ -8,7 +8,8 @@ sys.path.insert(0,'../')
 from tba.hgen.spaceconfig import *
 from tba.hgen import Bilinear,Qlinear,Xlinear,op_c,op_cdag,perm_parity
 from mpo import *
-from mpolib import *
+from opstring import *
+from opstringlib import *
 from mpslib import check_flow_mpx,random_mps
 from copy import deepcopy
 from blockmatrix import SimpleBMG

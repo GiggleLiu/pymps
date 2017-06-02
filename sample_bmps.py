@@ -11,7 +11,8 @@ Task:
 from numpy import sqrt,Inf
 
 from mpslib import random_bmps
-from mpo import OpCollection
+from opstring import OpCollection
+from mpo import OPC2MPO
 from mpolib import opunit_S
 from tba.hgen import SpinSpaceConfig
 from contraction import Contractor
@@ -51,7 +52,7 @@ for i in xrange(kA.nsite-1):
     opc+=Sx.as_site(i)*Sx.as_site(i+1)
     opc+=Sy.as_site(i)*Sy.as_site(i+1)
     opc+=Sz.as_site(i)*Sz.as_site(i+1)
-H=opc.toMPO(method='additive')  #bond dimension 37, contraction needed!
+H=OPC2MPO(opc,method='additive')  #bond dimension 37, contraction needed!
 H.compress()    #bond dimension 4, the optimal case.
 
 #Get <H>

@@ -9,12 +9,12 @@ sys.path.insert(0,'../')
 
 from tba.hgen import SpinSpaceConfig
 from mpo import *
+from opstring import *
 from mps import BMPS
 from mpolib import *
 from mpslib import *
 from contraction import *
 from mps import MPS
-from contraction import Contractor
 from pydavidson import gs
 from utils import fast_svd
 from tensor import Tensor
@@ -54,6 +54,7 @@ class TestCon(object):
      
     def test_braOket(self):
         print 'Testing contraction of mpses.'
+        from contraction import Contractor
         con=Contractor(self.mpo,self.mps,bra_bond_str='c')
         con.contract2l()
         S2=con.RPART[-1]*self.mps.S**2
@@ -167,7 +168,7 @@ class TestCon(object):
 
     def test_all(self):
         self.test_expect_onsite()
-        self.test_braOket()
+        #self.test_braOket()
         self.test_getexpect()
         #self.test_usv()
         #self.test_usvs()

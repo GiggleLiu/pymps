@@ -7,7 +7,7 @@ from scipy.sparse import csr_matrix
 import pdb,time
 
 from tensor import Tensor
-from mpo import UNSETTLED,OpUnit,OpString,OpCollection
+from opstring import UNSETTLED,OpUnit,OpString,OpCollection
 from mpolib import opunit_Z
 from utils import fast_svd
 from mpslib import mps_sum

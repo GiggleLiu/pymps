@@ -7,7 +7,9 @@ sys.path.insert(0,'../')
 from tba.hgen.spaceconfig import *
 from tba.hgen import Bilinear,Qlinear,Xlinear,op_c,op_cdag
 from mpo import *
+from opstring import *
 from mpolib import *
+from opstringlib import *
 from mpslib import check_flow_mpx,random_mps
 from copy import deepcopy
 from blockmatrix import SimpleBMG
@@ -38,9 +40,9 @@ class TestMPO():
     def test_construction(self):
         H0=self.mpo.H
         opc=self.opc
-        mpo1=opc.toMPO(method='direct')
+        mpo1=OPC2MPO(opc,method='direct')
         H1=mpo1.H
-        mpo2=opc.toMPO(method='addition')
+        mpo2=OPC2MPO(opc,method='addition')
         H2=mpo2.H
         assert_allclose(H0,H1,atol=1e-8)
         assert_allclose(H0,H2,atol=1e-8)
