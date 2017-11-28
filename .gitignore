@@ -21,3 +21,4 @@ core.*
 *data/
 *build/
 run.py
+.cache/

@@ -9,25 +9,21 @@ The requirements are:
 * `matplotlib <http://www.matplotlib.org/>`_ for plotting
 
 * `tba <https://github.com/GiggleLiu/tba/>`_
-* `blockmatrix <https://github.com/GiggleLiu/blockmatrix/>`_
 
-It is recommended to use `Anaconda <https://www.continuum.io/downloads/>`_ to install these packages(except tba and blockmatrix).
+It is recommended to use `Anaconda <https://www.continuum.io/downloads/>`_ to install these packages(except tba).
 
 Download the code using the `Download ZIP
-<https://github.com/GiggleLiu/mpslib/archive/master.zip>`_
+<https://github.com/GiggleLiu/blockmatrix/archive/master.zip>`_
 button on github, or run the following command from a terminal::
 
-    $ wget -O mpslib-master.zip https://github.com/GiggleLiu/mpslib/archive/master.zip
+    $ wget -O blockmatrix-master.zip https://github.com/GiggleLiu/blockmatrix/archive/master.zip
 
 Within a terminal, execute the following to unpack the code::
 
-    $ unzip mpslib-master.zip
-    $ cd mpslib-master/
+    $ unzip blockmatrix-master.zip
+    $ cd blockmatrix-master/
     $ (sudo) python setup.py install
 
 The first program, for instance, can be run by issuing::
 
-    $ cd mps/
-    $ python sample_tensor.py
-    $ python sample_mps.py
-    $ python sample_bmps.py
+    $ python sample.py

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# PyMPS documentation build configuration file, created by
+# NRGMapping documentation build configuration file, created by
 # sphinx-quickstart on Mon Sep  7 00:20:20 2015.
 #
 # This file is execfile()d with the current directory set to its
@@ -58,9 +58,9 @@ source_suffix = ['.rst']
 master_doc = 'index'
 
 # General information about the project.
-project = u'PyMPS'
-copyright = u'2016, Jinguo Leo'
-author = u'Jinguo Leo'
+project = 'BlockMatrix'
+copyright = '2016, Jinguo Leo'
+author = 'Jinguo Leo'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -212,7 +212,7 @@ html_static_path = ['_static']
 #html_search_scorer = 'scorer.js'
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'PyMPS_help_doc'
+htmlhelp_basename = 'BlockMatrix_help_doc'
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -236,8 +236,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'PyMPS.tex', u'PyMPS Documentation',
-     u'Jinguo Leo', 'manual'),
+    (master_doc, 'BlockMatrix.tex', 'BlockMatrix Documentation',
+     'Jinguo Leo', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -266,7 +266,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'PyMPS', u'PyMPS Documentation',
+    (master_doc, 'BlockMatrix', 'BlockMatrix Documentation',
      [author], 1)
 ]
 
@@ -280,8 +280,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'PyMPS', u'PyMPS Documentation',
-     author, 'PyMPS', 'One line description of project.',
+    (master_doc, 'BlockMatrix', 'BlockMatrix Documentation',
+     author, 'BlockMatrix', 'One line description of project.',
      'Miscellaneous'),
 ]
 
