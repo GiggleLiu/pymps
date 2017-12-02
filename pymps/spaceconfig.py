@@ -8,7 +8,7 @@ from itertools import combinations
 import pdb
 
 __all__ = ['SpaceConfig', 'SuperSpaceConfig', 'SpinSpaceConfig',
-           'standard_order', 'get_quantum_number']
+           'standard_order']
 
 standard_order = ['nambu', 'atom', 'spin', 'orbit']
 
@@ -391,19 +391,19 @@ class SuperSpaceConfig(SpaceConfig):
         hndim = self.hndim
         configs = self.ind2config(arange(hndim))
 
-        qns = zeros([hndim, nstr], dtype='int32')
-        if qtype == 'M' or qtype == 'R':
+        qns = zeros([hndim], dtype='int32')
+        if name == 'M' or name == 'R':
             # for quantum number nup-ndn
             nspin = self.nspin
             for i in range(nspin):
                 spini = nspin - 2 * i - 1  # nspin/2.-i-0.5
                 imask = self.subspace(spinindex=i)
                 qns += configs[:, imask].sum(axis=-1) * spini
-                if qtype == 'R':
+                if name == 'R':
                     qns %= 4
         else:
             qns = sum(configs, axis=-1)
-            if qtype == 'P':
+            if name == 'P':
                 qns %= self.per[istr]
         return qns
 
@@ -482,6 +482,6 @@ class SpinSpaceConfig(SpaceConfig):
         for i in range(nspin):
             spini = nspin - 2 * i - 1  # nspin/2.-i-0.5
             qns += sum(spini * (configs == i), axis=-1)
-        if qtype == 'R':
+        if name == 'R':
             qns %= 4
         return qns

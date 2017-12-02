@@ -1,6 +1,7 @@
 from functools import wraps
 import pickle
 
+__all__ = ['inherit_docstring_from', 'quicksave', 'quickload', 'nullobj']
 
 def inherit_docstring_from(cls):
     def docstring_inheriting_decorator(fn):
@@ -38,3 +39,7 @@ def quickload(filename):
     with open(filename, 'rb') as f:
         obj = pickle.load(f)
     return obj
+
+def nullobj():
+    '''an empty object'''
+    return type('obj', (object,), {})()

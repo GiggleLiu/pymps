@@ -6,7 +6,7 @@ import numpy as np
 
 from .mpo import BMPO, MPO
 from .mpo import _mpo_sum
-from ..tensor.tensorlib import random_bdmatrix
+from ..tensor.random import random_bdmatrix
 
 __all__ = ['random_bmpo', 'random_mpo', 'check_validity_mpo', 'mpo_sum']
 

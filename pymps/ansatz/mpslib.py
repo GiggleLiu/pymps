@@ -8,7 +8,7 @@ from numpy.linalg import norm
 import pdb
 
 from ..tensor.btensor import BTensor
-from ..tensor.tensorlib import random_bdmatrix
+from ..tensor.random import random_bdmatrix
 
 from .mps import MPS, _mps_sum, MPSBase, BMPS, mPS
 from .vidalmps import VidalMPS

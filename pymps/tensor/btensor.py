@@ -388,6 +388,10 @@ class BTensor(TensorBase):
     def get_block(self, block):
         return self.data.get(block, np.zeros([lb.bm.blocksize(n) for lb, n in zip(self.labels, block)], dtype=self.dtype))
 
+    @inherit_docstring_from(TensorBase)
+    def set_block(self, block, data):
+        self.data[block] = data
+
     def conj(self):
         '''Conjugate.'''
         return BTensor(dict((blk, data.conj()) for blk, data in self.data.items()), self.labels[:])

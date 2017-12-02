@@ -1,22 +1,18 @@
+from __future__ import division
 from numpy import *
 from numpy.testing import dec, assert_, assert_raises, assert_almost_equal, assert_allclose
-from matplotlib.pyplot import *
 from scipy.linalg import expm
 import scipy.sparse as sps
 import copy
 import pdb
-import sys
 from functools import reduce
-sys.path.insert(0, '../')
-
-from tba.hgen.spaceconfig import *
 from tba.hgen import Bilinear, Qlinear, Xlinear, op_c, op_cdag, perm_parity
-from mpo import *
-from opstring import *
-from opstringlib import *
-from mpslib import check_flow_mpx, random_mps
-from copy import deepcopy
-from blockmatrix import SimpleBMG
+
+from ...spaceconfig import *
+from ...ansatz.mpo import *
+from ...ansatz.mpslib import check_flow_mpx, random_mps
+from ..opstring import *
+from ..opstringlib import *
 
 
 def random_fop(spaceconfig, siteindex):
@@ -100,16 +96,17 @@ def test_cs():
     assert_allclose(z.get_data().diagonal(), [1, -1, -1, 1])
     assert_allclose(z2.diagonal(), [1, -1, -1, 1])
 
-    print('Test sp, sm, sy')
-    sp = cupd * cdn
-    sm = cdnd * cup
-    sy = -0.5j * cupd * cdn + 0.5j * cdnd * cup
-    ssy = opunit_Sy(spaceconfig)
+    if False:
+        print('Test sp, sm, sy')
+        sp = cupd * cdn
+        sm = cdnd * cup
+        sy = -0.5j * cupd * cdn + 0.5j * cdnd * cup
+        ssy = opunit_Sy(spaceconfig)
 
-    ssp = opunit_Sp(spaceconfig)
-    ssm = opunit_Sm(spaceconfig)
-    assert_(ssp == sp)
-    assert_(ssm == sm)
+        ssp = opunit_Sp(spaceconfig)
+        ssm = opunit_Sm(spaceconfig)
+        assert_(ssp == sp)
+        assert_(ssm == sm)
 
 
 class CastTest(object):
@@ -238,29 +235,31 @@ def test_oumul():
 
 
 def test_osmul(is_fermion):
-    scfg = [1, 2, 1]
     nsite = 10
-    spaceconfig = SuperSpaceConfig(scfg)
     print('Multiplication of OpStrings.')
     sites = arange(nsite)
     random.shuffle(sites)
     if is_fermion:
-        sign1, sign2, sign3 = (-1)**perm_parity(argsort(sites[:nsite / 2])), (-1)**perm_parity(
-            argsort(sites[nsite / 2:])), (-1)**perm_parity(sites)
+        scfg = [1, 2, 1]
+        spaceconfig = SuperSpaceConfig(scfg)
+        sign1, sign2, sign3 = (-1)**perm_parity(argsort(sites[:nsite // 2])), (-1)**perm_parity(
+            argsort(sites[nsite // 2:])), (-1)**perm_parity(sites)
         sign4 = -sign3
         fous = [random_fop(spaceconfig, siteindex=site) for site in sites]
     else:
+        scfg = [1, 2]
+        spaceconfig = SpinSpaceConfig(scfg)
         sign1, sign2, sign3, sign4 = 1, 1, 1, 1
         fous = [random_bop(spaceconfig, siteindex=site) for site in sites]
-    res1 = prod(fous[:nsite / 2])
-    res2 = prod(fous[nsite / 2:])
+    res1 = prod(fous[:nsite // 2])
+    res2 = prod(fous[nsite // 2:])
     res3 = res1 * res2
     # res2 if fermionic, so res2*res1 will have a negative sign with sign3
     res4 = OpString(res2.opunits)
     res4 *= res1
     for i, (res, sign) in enumerate(zip([res1, res2, res3, res4], [sign1, sign2, sign3, sign4])):
         # match num of units
-        assert_(res.nunit == nsite / 2 if i < 2 else nsite)
+        assert_(res.nunit == nsite // 2 if i < 2 else nsite)
         # sites in accending order
         assert_(all(diff(res.siteindices) > 0))
         # data unchanged
@@ -327,17 +326,16 @@ def test_6site():
     opc += U * nup.as_site(0) * ndn.as_site(0)
     H = opc.H(nsite=6, dense=False)
     print('Iteracting EG = %s' % sps.linalg.eigsh(H, k=1, which='SA')[0])
-    pdb.set_trace()
 
-
-test_6site()
-test_cs()
-test_ss()
-test_I()
-test_insertZ()
-test_add()
-test_osmul(True)
-test_osmul(False)
-test_oumul()
-CastTest().test_casting2()
-CastTest().test_casting4()
+if __name__ == '__main__':
+    test_6site()
+    test_cs()
+    # test_ss()
+    # test_I()
+    test_insertZ()
+    test_add()
+    # test_osmul(True)
+    test_osmul(False)
+    # test_oumul()
+    CastTest().test_casting2()
+    CastTest().test_casting4()

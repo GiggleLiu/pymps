@@ -22,3 +22,5 @@ core.*
 *build/
 run.py
 .cache/
+dist/
+pymps.egg-info/

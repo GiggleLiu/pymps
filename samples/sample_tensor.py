@@ -9,10 +9,10 @@ Task:
 from numpy import random, arange, allclose, argsort, sort
 import pdb
 
-from tba.hgen import SpinSpaceConfig
+from pymps.spaceconfig import SpinSpaceConfig
 from pymps.blockmarker import SimpleBMG
-from tensor import Tensor
-from tensorlib import random_bdmatrix, random_btensor, svdbd
+from pymps.tensor import Tensor
+from pymps.tensor.tensorlib import random_bdmatrix, random_btensor, svdbd
 
 # the single site Hilbert space(Spin) config, 2 spin, 1 orbital.
 spaceconfig = SpinSpaceConfig([1, 2])
@@ -26,7 +26,7 @@ T2 = random_bdmatrix(bm=bm)
 # truncate the 2nd axis,
 indices = arange(T2.shape[1])
 random.shuffle(indices)
-remained_bonds = sort(indices[:T2.shape[1] / 2])
+remained_bonds = sort(indices[:T2.shape[1] // 2])
 T2 = T2.take(remained_bonds, axis=1)
 T3, pm = T2.b_reorder(axes=(1,), return_pm=True)
 # perform SVD decomposition, both block markers

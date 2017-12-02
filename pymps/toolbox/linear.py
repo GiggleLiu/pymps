@@ -1,4 +1,6 @@
 import numpy as np
+from scipy.linalg import eigh, norm, svd
+from scipy.sparse.linalg import LinearOperator
 import scipy.sparse as sps
 
 from . import fkron
@@ -90,19 +92,19 @@ def icgs(u, Q, M=None, colwise=True, return_norm=False, max_iter=3, alpha=0.5):
     Return:
         1darray: orthogonalized vector u.
     '''
-    assert(ndim(u) == 2)
+    assert(np.ndim(u) == 2)
     assert(M is None or colwise)
     uH, QH = u.T.conj(), Q.T.conj()
     Mu = M.dot(u) if M is not None else u
-    r_pre = sqrt(abs(uH.dot(Mu))) if colwise else sqrt(abs(Mu.dot(uH)))
+    r_pre = np.sqrt(abs(uH.dot(Mu))) if colwise else np.sqrt(abs(Mu.dot(uH)))
     for it in range(max_iter):
         if colwise:
             u = u - Q.dot(QH.dot(Mu))
             Mu = M.dot(u) if M is not None else u
-            r1 = sqrt(abs(uH.dot(Mu)))
+            r1 = np.sqrt(abs(uH.dot(Mu)))
         else:
             u = u - u.dot(QH).dot(Q)
-            r1 = sqrt(abs(u.dot(uH)))
+            r1 = np.sqrt(abs(u.dot(uH)))
         if r1 > alpha * r_pre:
             break
         r_pre = r1
@@ -126,11 +128,11 @@ def fast_svd(A, d):
     if not (N > 0 and M > 0 and d <= min(N, M)):
         raise
     # get V
-    x = random.random([d, N])
+    x = np.random.random([d, N])
     # Allows a special kind of LinearOperator with function rdot.
     y = A.rdot(x) if isinstance(A, LinearOperator) else x.dot(A)
     # schmidt orthogonalization of y, using icgs to guarantee orthogonality.
-    for i in xrange(d):
+    for i in range(d):
         yi = icgs(y[i:i + 1].T, Q=y[:i].T).T
         y[i:i + 1] = yi / norm(yi)
 
@@ -155,7 +157,7 @@ def eigen_cholesky(A):
     if any(E < -ZERO_REF):
         raise ValueError('Negative Eigenvalue Found! %s' % E)
     kpmask = E > ZERO_REF
-    X = (V[:, kpmask] * sqrt(E[kpmask])).T.conj()
+    X = (V[:, kpmask] * np.sqrt(E[kpmask])).T.conj()
     return X
 
 

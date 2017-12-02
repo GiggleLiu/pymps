@@ -4,14 +4,14 @@ TensorBase and dense Tensor Class.
 
 import numpy as np
 from numpy import array
-from scipy.linalg import svd
+from scipy.linalg import svd, eigh, eig
 from abc import ABCMeta, abstractmethod
 import copy
 import pdb
 import numbers
 import itertools
 
-from .linalg import ldu, dpl
+from .basic import ldu, dpl
 from ..toolbox.utils import inherit_docstring_from
 from ..blockmarker import join_bms, BlockMarker, block_diag
 
@@ -68,23 +68,25 @@ def tdot(tensor1, tensor2):
     Returns:
         :obj:`Tensor`: output tensor.
     '''
+    inner1, inner2, outer1, outer2 = _same_diff_labels(tensor1.labels, tensor2.labels)
+    res = np.tensordot(tensor1, tensor2, axes=(inner1, inner2))
+    res = Tensor(res, labels=[tensor1.labels[i] for i in outer1]+[tensor2.labels[i] for i in outer2])
+    return res
+
+
+def _same_diff_labels(lb1s, lb2s):
     # detect same labels
-    lb1s, lb2s = tensor1.labels, tensor2.labels[:]
-    axes1, axes2 = [], []
-    nlb = []
+    inner1, inner2 = [], []
+    outer1 = []
     for i1, lb1 in enumerate(lb1s):
         if lb1 in lb2s:
             i2 = lb2s.index(lb1)
-            axes1.append(i1)
-            axes2.append(i2)
+            inner1.append(i1)
+            inner2.append(i2)
         else:
-            nlb.append(lb1)
-    nlb = nlb + [lb2s[i2] for i2 in range(len(lb2s)) if i2 not in axes2]
-    res = np.tensordot(tensor1, tensor2, axes=(axes1, axes2))
-    res = Tensor(res, labels=nlb)
-    floops = np.sqrt(np.prod(tensor1.shape) *
-                     np.prod(tensor2.shape) * np.prod(res.shape))
-    return res
+            outer1.append(i1)
+    outer2 = [i2 for i2 in range(len(lb2s)) if i2 not in inner2]
+    return inner1, inner2, outer1, outer2
 
 
 class TensorBase(object, metaclass=ABCMeta):
@@ -205,6 +207,21 @@ class TensorBase(object, metaclass=ABCMeta):
         '''
         pass
 
+
+    @abstractmethod
+    def set_block(self, block):
+        '''
+        Query data in specific block.
+
+        Args:
+            block (tuple): the target block.
+
+        Returns:
+            ndarray, the data.
+        '''
+        pass
+
+
     @abstractmethod
     def eliminate_zeros(self, tol=ZERO_REF):
         '''
@@ -259,7 +276,7 @@ class TensorBase(object, metaclass=ABCMeta):
         Returns:
             (U,S,V) that U*S*V = A
         '''
-        len2k = False  # using len-2 kernels.
+        kernel_type = 0  # 0->USV type, 1->QR type, 2->USU type
         if kernel == 'svd':
             def csvd(cell): return svd(
                 cell, full_matrices=False, lapack_driver='gesvd')
@@ -267,10 +284,15 @@ class TensorBase(object, metaclass=ABCMeta):
             def csvd(cell): return ldu(cell)
         elif kernel == 'dpl_r':
             def csvd(cell): return dpl(cell, axis=0)
-            len2k = True
+            kernel_type = 1
         elif kernel == 'dpl_c':
             def csvd(cell): return dpl(cell, axis=1)
-            len2k = True
+            kernel_type = 1
+        elif kernel == 'eigh':
+            def csvd(cell):
+                data = eigh(cell)
+                return (data[1], data[0], data[1].T.conj())
+            kernel_type = 2
         else:
             raise ValueError()
         from .btensor import BTensor
@@ -289,7 +311,7 @@ class TensorBase(object, metaclass=ABCMeta):
                     qns=np.zeros([1, 0], dtype='int32'), Nr=array([0, V.shape[0]])))
                 U = Tensor(U, labels=[M.labels[0], center_label])
                 V = Tensor(V, labels=[center_label, M.labels[1]])
-                return (U, data[1], V) if not len2k else (U, V)
+                return (U, data[1], V) if kernel_type!=1 else (U, V)
         else:
             M = self.merge_axes(sls=slice(cbond, self.ndim), nlabel='_X_').merge_axes(
                 sls=slice(0, cbond), nlabel='_Y_')
@@ -300,7 +322,7 @@ class TensorBase(object, metaclass=ABCMeta):
                 self.shape[:cbond] + (U.shape[-1],)), labels=self.labels[:cbond] + [cbond_str])
             V = Tensor(V.reshape(
                 (V.shape[0],) + self.shape[cbond:]), labels=[cbond_str] + self.labels[cbond:])
-            return (U, data[1], V) if not len2k else (U, V)
+            return (U, data[1], V) if kernel_type!=1 else (U, V)
 
         M, pms = M.b_reorder(return_pm=True)
         # check and prepair datas
@@ -321,14 +343,14 @@ class TensorBase(object, metaclass=ABCMeta):
             data = csvd(cell)
             UL.append(data[0])
             VL.append(data[-1])
-            if not len2k:
+            if kernel_type != 1:
                 SL.append(data[1])
 
         # get center BLabel and S
         nr = [vi.shape[0] for vi in VL]
         Nr = np.append([0], np.cumsum(nr))
         b0 = BLabel(cbond_str, BlockMarker(Nr=Nr, qns=common_qns_2d))
-        if not len2k:
+        if kernel_type!=1:
             S = np.concatenate(SL)
 
         # get U, V
@@ -366,7 +388,7 @@ class TensorBase(object, metaclass=ABCMeta):
             np.argsort(pms[1]), axis=1)
         U, V = U.split_axis(axis=0, nlabels=self.labels[:cbond], dims=self.shape[:cbond]), V.split_axis(
             axis=1, nlabels=self.labels[cbond:], dims=self.shape[cbond:])
-        return (U, S, V) if not len2k else (U, V)
+        return (U, S, V) if kernel_type!=1 else (U, V)
 
     def autoflow(self, axis, bmg, signs, check_conflicts=False):
         '''
@@ -651,6 +673,12 @@ class Tensor(np.ndarray, TensorBase):
         if not isinstance(self.labels[0], BLabel):
             raise Exception('This tensor is not blocked!')
         return self[tuple([lb.bm.get_slice(b) for b, lb in zip(block, self.labels)])]
+
+    @inherit_docstring_from(TensorBase)
+    def set_block(self, block, data):
+        if not isinstance(self.labels[0], BLabel):
+            raise Exception('This tensor is not blocked!')
+        self[tuple([lb.bm.get_slice(b) for b, lb in zip(block, self.labels)])] = data
 
     @inherit_docstring_from(TensorBase)
     def toarray(self):

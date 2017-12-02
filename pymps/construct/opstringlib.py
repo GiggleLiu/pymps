@@ -82,11 +82,11 @@ def opunit_C(spaceconfig, index, dag, siteindex=UNSETTLED):
     count_e, index1 = info['e_between'], info['rindex']
 
     # coping the fermionic sign
-    sparam = ones(len(index1))
+    sparam = np.ones(len(index1))
     # index passes eletrons [0,index)
     # the sign is equal to the electrons site<index
     sparam[count_e[0] % 2 == 1] *= -1
-    data = zeros(shape=[spaceconfig.hndim] * 2, dtype='complex128')
+    data = np.zeros(shape=[spaceconfig.hndim] * 2, dtype='complex128')
     data[index1, index2] = sparam
 
     res = OpUnit(label='c%s' % index + ('dag' if dag else ''), data=data,
@@ -94,12 +94,12 @@ def opunit_C(spaceconfig, index, dag, siteindex=UNSETTLED):
     return res
 
 
-def opunit_cdag(spaceconfig, index): return opunit_C(
-    spaceconfig, index, dag=True, siteindex='-')
+def opunit_cdag(spaceconfig, index):
+    return opunit_C(spaceconfig, index, dag=True, siteindex='-')
 
 
-def opunit_c(spaceconfig, index): return opunit_C(
-    spaceconfig, index, dag=False, siteindex='-')
+def opunit_c(spaceconfig, index):
+    return opunit_C(spaceconfig, index, dag=False, siteindex='-')
 
 
 def opunit_N(spaceconfig, index=None, siteindex=UNSETTLED):
@@ -113,8 +113,12 @@ def opunit_N(spaceconfig, index=None, siteindex=UNSETTLED):
     Returns:
         <OpUnit>, the particle number operator.
     '''
-    data_diag = spaceconfig.get_quantum_number('Q')
-    res = OpUnit(label='N', data=np.diag(data_diag), math_str=r'N',
+    if not isinstance(spaceconfig,SuperSpaceConfig):
+        raise
+    hndim = spaceconfig.hndim
+    configs = spaceconfig.ind2config(np.arange(hndim))
+
+    res = OpUnit(label='N', data=np.diag(configs[:,index]), math_str=r'N',
                  fermionic=False, siteindex=siteindex)
     return res
 
@@ -130,7 +134,8 @@ def opunit_Z(spaceconfig, siteindex=UNSETTLED):
         <OpUnit>, the parity operator.
     '''
     data_diag = spaceconfig.get_quantum_number('Q')
-    np.fill_diagonal(data, np.round(exp(1j * pi * data_diag).real))
+    data = np.zeros([spaceconfig.hndim]*2, dtype = 'complex128')
+    np.fill_diagonal(data, np.round(np.exp(1j * np.pi * data_diag).real))
     res = OpUnit(label='Z', data=data, math_str=r'Z',
                  fermionic=False, siteindex=siteindex)
     return res
@@ -163,7 +168,7 @@ def xl2string(xl, param=1.):
                       dag=True if i < indices_ndag else False)
         ui.siteindex = siteindex
         units.append(ui)
-    opstring = complex(param * xl.factor) * prod(units)
+    opstring = complex(param * xl.factor) * np.prod(units)
     return opstring
 
 
@@ -192,7 +197,7 @@ def insert_Zs(op, spaceconfig):
                 insert_Zs(opstring, spaceconfig)
     elif isinstance(op, OpString):
         z0 = opunit_Z(spaceconfig=spaceconfig)
-        fsites = reshape(
+        fsites = np.reshape(
             [ou.siteindex for ou in op.opunits if ou.fermionic], [-1, 2])
         for ispan in range(len(fsites)):
             for i in range(fsites[ispan, 0], fsites[ispan, 1]):

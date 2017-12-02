@@ -9,10 +9,10 @@ Task:
 
 from numpy import sqrt
 
-from mpslib import random_mps
-from mpolib import opunit_N
-from tba.hgen import SuperSpaceConfig
-from contraction import get_expect
+from pymps.ansatz.mpslib import random_mps
+from pymps.construct.opstringlib import opunit_N
+from pymps.spaceconfig import SuperSpaceConfig
+from pymps.ansatz.contraction import get_expect
 
 ########### Generate 2 random kets ######
 # the single site Hilbert space config(Fermiononic),
@@ -43,4 +43,4 @@ ndn = opunit_N(spaceconfig=spaceconfig, index=1)
 # evaluate <op>
 res = [get_expect(nup.as_site(0) * ndn.as_site(i), ket).item()
        for i in xrange(ket.nsite)]
-print 'We Get Correlations: %s' % res
+print('We Get Correlations: %s' % res)

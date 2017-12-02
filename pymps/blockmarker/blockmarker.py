@@ -315,7 +315,7 @@ class BlockMarkerGenerator(object):
         qns1 (1Darray): the qns for a single site.
         spaceconfig (<SpaceConfig>): the Hilbert space for single site.
     '''
-    INF = 10000
+    INF = 10086
 
     def __init__(self, spaceconfig, start_qn, qns1):
         self.spaceconfig = spaceconfig

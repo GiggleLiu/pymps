@@ -7,21 +7,11 @@ from numpy.linalg import norm, svd
 from copy import deepcopy
 from numpy.testing import dec, assert_, assert_raises, assert_almost_equal, assert_allclose
 from matplotlib.pyplot import *
-import sys
 import pdb
 import time
-from os import path
-sys.path.insert(0, '../')
 
-from tba.hgen import SpinSpaceConfig
-from mpo import *
-from mpolib import *
-from mpslib import *
-from contraction import *
-from mps import MPS
-from pydavidson import gs
-from utils import fast_svd, ldu, dpl
-from blockmatrix import SimpleBMG
+from ..basic import ldu, dpl
+from ...toolbox.linear import fast_svd, icgs
 
 
 def test_fastsvd():
@@ -33,8 +23,8 @@ def test_fastsvd():
     U = random.random([N, d])
     V = random.random([d, M])
     for i in range(d):
-        ui = gs(U[:, i:i + 1], Q=U[:, :i])
-        vi = gs(V[i:i + 1].T, Q=V[:i].T).T
+        ui = icgs(U[:, i:i + 1], Q=U[:, :i])
+        vi = icgs(V[i:i + 1].T, Q=V[:i].T).T
         U[:, i:i + 1] = ui / norm(ui)
         V[i:i + 1] = vi / norm(vi)
     U = U / norm(U, axis=0)

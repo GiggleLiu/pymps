@@ -3,313 +3,318 @@ from numpy.linalg import norm, svd
 from numpy.testing import dec, assert_, assert_raises, assert_almost_equal, assert_allclose
 import sys
 import pdb
-import time
+import time, pytest
 
-from ...toolbox.utils import quicksave, quickload
+from ...toolbox.utils import quicksave, quickload, nullobj
 from ...blockmarker import SimpleBMG, BlockMarker
 from ...spaceconfig import SpinSpaceConfig, SuperSpaceConfig
 from ..tensor import *
+from ..random import *
+from ..linalg import *
 from ..btensor import BTensor
 from ..tensorlib import *
+from ..zero_flux import is_zero_flux, zero_flux_blocks, btdot
 
 
-class TestBTensor2D(object):
-    '''Test for Tensor.'''
+@pytest.fixture
+def btensor2d():
+    self = nullobj()
+    # make data that sparse enough
+    mat = array([[3, 3, 0, 0, 0],
+                 [0, 0, 1, 2, 2],
+                 [4, 4, 0, 0, 0],
+                 [4, 4, 0, 0, 0]])
+    bm1 = BlockMarker([0, 1, 2, 4], [[1], [0], [-1]])
+    bm2 = BlockMarker([0, 2, 3, 5], [[-1], [1], [0]])
+    labels = [BLabel('a', bm1), BLabel('b', bm2)]
+    self.dtensor = Tensor(mat, labels=labels)
+    data = {(0, 0): mat[:1, :2], (1, 1): mat[1:2, 2:3],
+            (1, 2): mat[1:2, 3:], (2, 0): mat[2:, :2]}
+    self.btensor = BTensor(data, labels)
+    assert_(check_validity_tensor(self.btensor))
+    assert_(check_validity_tensor(self.dtensor))
 
-    def __init__(self):
-        # make data that sparse enough
-        mat = array([[3, 3, 0, 0, 0],
-                     [0, 0, 1, 2, 2],
-                     [4, 4, 0, 0, 0],
-                     [4, 4, 0, 0, 0]])
-        bm1 = BlockMarker([0, 1, 2, 4], [[1], [0], [-1]])
-        bm2 = BlockMarker([0, 2, 3, 5], [[-1], [1], [0]])
-        labels = [BLabel('a', bm1), BLabel('b', bm2)]
-        self.dtensor = Tensor(mat, labels=labels)
-        data = {(0, 0): mat[:1, :2], (1, 1): mat[1:2, 2:3],
-                (1, 2): mat[1:2, 3:], (2, 0): mat[2:, :2]}
-        self.btensor = BTensor(data, labels)
-        assert_(check_validity_tensor(self.btensor))
-        assert_(check_validity_tensor(self.dtensor))
+    # get second version.
+    mat2 = array([[3, 3, 0, 0, 0],
+                  [0, 0, 1, 2, 2],
+                  [4, 4, 0, 0, 0]])
+    bm1 = BlockMarker([0, 1, 2, 3], [[-2], [0], [1]])
+    bm2 = BlockMarker([0, 2, 3, 5], [[-1], [0], [1]])
+    labels = [BLabel('c', bm1), BLabel('b', bm2)]
+    self.dtensor2 = Tensor(mat2, labels=labels)
+    data = {(0, 0): mat2[:1, :2], (1, 1): mat2[1:2, 2:3],
+            (1, 2): mat2[1:2, 3:], (2, 0): mat2[2:, :2]}
+    self.btensor2 = BTensor(data, labels)
+    assert_(check_validity_tensor(self.btensor2))
+    assert_(check_validity_tensor(self.dtensor2))
+    return self
 
-        # get second version.
-        mat2 = array([[3, 3, 0, 0, 0],
-                      [0, 0, 1, 2, 2],
-                      [4, 4, 0, 0, 0]])
-        bm1 = BlockMarker([0, 1, 2, 3], [[-2], [0], [1]])
-        bm2 = BlockMarker([0, 2, 3, 5], [[-1], [0], [1]])
-        labels = [BLabel('c', bm1), BLabel('b', bm2)]
-        self.dtensor2 = Tensor(mat2, labels=labels)
-        data = {(0, 0): mat2[:1, :2], (1, 1): mat2[1:2, 2:3],
-                (1, 2): mat2[1:2, 3:], (2, 0): mat2[2:, :2]}
-        self.btensor2 = BTensor(data, labels)
-        assert_(check_validity_tensor(self.btensor2))
-        assert_(check_validity_tensor(self.dtensor2))
+def test_mul(btensor2d):
+    print('Test for multiplication')
+    dt = btensor2d.dtensor * btensor2d.dtensor2
+    bt = btensor2d.btensor * btensor2d.btensor2
+    assert_allclose(dt, bt.todense())
+    assert_(all(dt.labels[i] == bt.labels[i]
+                for i in range(len(dt.labels))))
 
-    def test_mul(self):
-        print('Test for multiplication')
-        dt = self.dtensor * self.dtensor2
-        bt = self.btensor * self.btensor2
-        assert_allclose(dt, bt.todense())
-        assert_(all(dt.labels[i] == bt.labels[i]
-                    for i in range(len(dt.labels))))
-
-    def test_bdiag(self):
-        print('Test for tensor_block_diag.')
-        for axes in [(-2,), (0, 1)]:
-            dres = tensor_block_diag([self.dtensor, self.dtensor2], axes=axes)
-            bres = tensor_block_diag([self.btensor, self.btensor2], axes=axes)
-            assert_(
-                all([lb1.bm == lb2.bm for lb1, lb2 in zip(dres.labels, bres.labels)]))
-            assert_allclose(dres, bres.todense())
-
-    def test_data_parsing(self):
-        print('test for data parsing')
-        assert_allclose(self.dtensor, self.dtensor.tobtensor().todense())
-        assert_allclose(self.dtensor, self.btensor.todense())
-        print((self.btensor))
-
-    def test_mul_axis(self):
-        print('Testing multiplying 1D array to specific axis.')
-        axis = 1
-        arr = random.random(self.dtensor.shape[axis])
-        assert_allclose(self.btensor.mul_axis(
-            arr, axis=axis).todense(), self.dtensor.mul_axis(arr, axis=axis))
-
-    def test_sum(self):
-        print('Test sum of tensor.')
-        assert_(self.btensor.sum() == self.dtensor.sum())
-        assert_allclose(self.btensor.sum(axis=-1).todense(),
-                        self.dtensor.sum(axis=-1))
-        assert_allclose(self.btensor.sum(axis=(-2, -1)).todense(),
-                        self.dtensor.sum(axis=(-2, -1)))
-
-    def test_take(self):
-        print('Testing taking axes!')
-        axis = 0
-        i = 2
-        axis_label = self.btensor.labels[axis]
-        t1 = self.dtensor.take(i, axis=axis)
-        t11 = self.dtensor.take(i, axis=axis_label)
-        t22 = self.btensor.take(i, axis=axis_label)
-        res = [4, 4, 0, 0, 0]
-        assert_allclose(t11, res)
-        assert_allclose(res, t22.todense())
-        assert_allclose(t1, res)
-        print('Testing taking block - axes!')
-        ib, axis = 2, 1
-        res = zeros([4, 2])
-        res[1] = 2
-        assert_allclose(self.dtensor.take_b(ib, axis=axis), res)
-        assert_allclose(self.btensor.take_b(ib, axis=axis).todense(), res)
-
-    def test_chorder(self):
-        print('Testing chorder!')
-        norder = [1, 0]
-        labels = [self.dtensor.labels[i] for i in norder]
-        t1 = self.dtensor.chorder(norder)
-        t2 = self.btensor.chorder(norder)
-        assert_allclose(t1, t2.todense())
-        t11 = self.dtensor.chorder(labels)
-        # t22=self.btensor.chorder(labels)
-        # assert_allclose(t11,t22.todense())
-        assert_allclose(t11, t1)
-
-    def test_merge_split(self):
-        print('Testing merge!')
-        axes = slice(0, 2)
-        t1 = self.btensor.merge_axes(axes)
-        t2 = self.dtensor.merge_axes(axes)
-        lbs = self.btensor.labels[axes]
-        tval = asarray(self.dtensor).reshape(
-            [prod(self.dtensor.shape[:2])] + list(self.dtensor.shape[2:]))
-        assert_allclose(t2, tval)
-        assert_allclose(t2, t1.todense())
-        print('Testing split!')
-        t11 = t1.split_axis(axis=axes.start, nlabels=lbs)
-        # [lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
-        t11b = t1.split_axis_b(axis=axes.start, nlabels=lbs)
-        t22 = t2.split_axis(axis=axes.start, nlabels=lbs)
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t11.labels, self.dtensor.labels)]))
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t11b.labels, self.dtensor.labels)]))
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t22.labels, self.dtensor.labels)]))
-        assert_allclose(t22, self.dtensor)
-        assert_allclose(t11.todense(), self.dtensor)
-        assert_allclose(t11b.todense(), self.dtensor)
-
-    def test_reorder(self):
-        print('Testing reordering!')
-        t1 = self.dtensor.b_reorder()
-        t2 = self.btensor.b_reorder()
-        assert_allclose(t1, t2.todense())
+def test_bdiag(btensor2d):
+    print('Test for tensor_block_diag.')
+    for axes in [(-2,), (0, 1)]:
+        dres = tensor_block_diag([btensor2d.dtensor, btensor2d.dtensor2], axes=axes)
+        bres = tensor_block_diag([btensor2d.btensor, btensor2d.btensor2], axes=axes)
         assert_(
-            all([lb1.bm == lb2.bm for lb1, lb2 in zip(t1.labels, t2.labels)]))
-        assert_(check_validity_tensor(t1))
-        assert_(check_validity_tensor(t2))
+            all([lb1.bm == lb2.bm for lb1, lb2 in zip(dres.labels, bres.labels)]))
+        assert_allclose(dres, bres.todense())
 
-    def test_all(self):
-        self.test_bdiag()
-        self.test_sum()
-        self.test_mul()
-        self.test_data_parsing()
-        self.test_mul_axis()
-        self.test_chorder()
-        self.test_take()
-        self.test_reorder()
-        self.test_merge_split()
+def test_data_parsing(btensor2d):
+    print('test for data parsing')
+    assert_allclose(btensor2d.dtensor, btensor2d.dtensor.tobtensor().todense())
+    assert_allclose(btensor2d.dtensor, btensor2d.btensor.todense())
+    print((btensor2d.btensor))
+
+def test_mul_axis(btensor2d):
+    print('Testing multiplying 1D array to specific axis.')
+    axis = 1
+    arr = random.random(btensor2d.dtensor.shape[axis])
+    assert_allclose(btensor2d.btensor.mul_axis(
+        arr, axis=axis).todense(), btensor2d.dtensor.mul_axis(arr, axis=axis))
+
+def test_sum(btensor2d):
+    print('Test sum of tensor.')
+    assert_(btensor2d.btensor.sum() == btensor2d.dtensor.sum())
+    assert_allclose(btensor2d.btensor.sum(axis=-1).todense(),
+                    btensor2d.dtensor.sum(axis=-1))
+    assert_allclose(btensor2d.btensor.sum(axis=(-2, -1)).todense(),
+                    btensor2d.dtensor.sum(axis=(-2, -1)))
+
+def test_take(btensor2d):
+    print('Testing taking axes!')
+    axis = 0
+    i = 2
+    axis_label = btensor2d.btensor.labels[axis]
+    t1 = btensor2d.dtensor.take(i, axis=axis)
+    t11 = btensor2d.dtensor.take(i, axis=axis_label)
+    t22 = btensor2d.btensor.take(i, axis=axis_label)
+    res = [4, 4, 0, 0, 0]
+    assert_allclose(t11, res)
+    assert_allclose(res, t22.todense())
+    assert_allclose(t1, res)
+    print('Testing taking block - axes!')
+    ib, axis = 2, 1
+    res = zeros([4, 2])
+    res[1] = 2
+    assert_allclose(btensor2d.dtensor.take_b(ib, axis=axis), res)
+    assert_allclose(btensor2d.btensor.take_b(ib, axis=axis).todense(), res)
+
+def test_chorder(btensor2d):
+    print('Testing chorder!')
+    norder = [1, 0]
+    labels = [btensor2d.dtensor.labels[i] for i in norder]
+    t1 = btensor2d.dtensor.chorder(norder)
+    t2 = btensor2d.btensor.chorder(norder)
+    assert_allclose(t1, t2.todense())
+    t11 = btensor2d.dtensor.chorder(labels)
+    # t22=btensor2d.btensor.chorder(labels)
+    # assert_allclose(t11,t22.todense())
+    assert_allclose(t11, t1)
+
+def test_merge_split(btensor2d):
+    print('Testing merge!')
+    axes = slice(0, 2)
+    t1 = btensor2d.btensor.merge_axes(axes)
+    t2 = btensor2d.dtensor.merge_axes(axes)
+    lbs = btensor2d.btensor.labels[axes]
+    tval = asarray(btensor2d.dtensor).reshape(
+        [prod(btensor2d.dtensor.shape[:2])] + list(btensor2d.dtensor.shape[2:]))
+    assert_allclose(t2, tval)
+    assert_allclose(t2, t1.todense())
+    print('Testing split!')
+    t11 = t1.split_axis(axis=axes.start, nlabels=lbs)
+    # [lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
+    t11b = t1.split_axis_b(axis=axes.start, nlabels=lbs)
+    t22 = t2.split_axis(axis=axes.start, nlabels=lbs)
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t11.labels, btensor2d.dtensor.labels)]))
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t11b.labels, btensor2d.dtensor.labels)]))
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t22.labels, btensor2d.dtensor.labels)]))
+    assert_allclose(t22, btensor2d.dtensor)
+    assert_allclose(t11.todense(), btensor2d.dtensor)
+    assert_allclose(t11b.todense(), btensor2d.dtensor)
+
+def test_reorder(btensor2d):
+    print('Testing reordering!')
+    t1 = btensor2d.dtensor.b_reorder()
+    t2 = btensor2d.btensor.b_reorder()
+    assert_allclose(t1, t2.todense())
+    assert_(
+        all([lb1.bm == lb2.bm for lb1, lb2 in zip(t1.labels, t2.labels)]))
+    assert_(check_validity_tensor(t1))
+    assert_(check_validity_tensor(t2))
+
+def btensor2d_all():
+    self = btensor2d()
+    test_bdiag(self)
+    test_sum(self)
+    test_mul(self)
+    test_data_parsing(self)
+    test_mul_axis(self)
+    test_chorder(self)
+    test_take(self)
+    test_reorder(self)
+    test_merge_split(self)
 
 
-class TestBTensor3D(object):
-    '''Test for Tensor.'''
+@pytest.fixture
+def btensor3d():
+    self = nullobj()
+    # make data that sparse enough
+    mat = array([[[-3, -3, 0, 0],
+                  [0, 0, 1, 2]],
+                 [[4, 4, 0, 0],
+                  [4, 4, 0, 0]]])
+    bm1 = BlockMarker([0, 1, 2], [[0], [1]])
+    bm2 = BlockMarker([0, 1, 2], [[1], [-1]])
+    bm3 = BlockMarker([0, 2, 4], [[-1], [0]])
+    labels = [BLabel('a', bm1), BLabel('b', bm2), BLabel('c', bm3)]
+    self.dtensor = Tensor(mat, labels=labels)
+    data = {(0, 0, 0): mat[:1, :1, :2], (0, 1, 1): mat[:1, 1:2, 2:],
+            (1, 0, 0): mat[1:, :1, :2], (1, 1, 0): mat[1:, 1:, :2]}
+    self.btensor = BTensor(data, labels)
+    assert_(check_validity_tensor(self.btensor))
+    assert_(check_validity_tensor(self.dtensor))
 
-    def __init__(self):
-        # make data that sparse enough
-        mat = array([[[-3, -3, 0, 0],
-                      [0, 0, 1, 2]],
-                     [[4, 4, 0, 0],
-                      [4, 4, 0, 0]]])
-        bm1 = BlockMarker([0, 1, 2], [[0], [1]])
-        bm2 = BlockMarker([0, 1, 2], [[1], [-1]])
-        bm3 = BlockMarker([0, 2, 4], [[-1], [0]])
-        labels = [BLabel('a', bm1), BLabel('b', bm2), BLabel('c', bm3)]
-        self.dtensor = Tensor(mat, labels=labels)
-        data = {(0, 0, 0): mat[:1, :1, :2], (0, 1, 1): mat[:1, 1:2, 2:],
-                (1, 0, 0): mat[1:, :1, :2], (1, 1, 0): mat[1:, 1:, :2]}
-        self.btensor = BTensor(data, labels)
-        assert_(check_validity_tensor(self.btensor))
-        assert_(check_validity_tensor(self.dtensor))
+    mat = array([[[-3, -3, 0, 0]],
+                 [[4, 4, 0, 0]]])
+    bm1 = BlockMarker([0, 1, 2], [[3], [1]])
+    bm2 = BlockMarker([0, 1], [[3]])
+    bm3 = BlockMarker([0, 2, 4], [[1], [0]])
+    labels = [BLabel('a', bm1), BLabel('d', bm2), BLabel('c', bm3)]
+    self.dtensor2 = Tensor(mat, labels=labels)
+    data = {(0, 0, 0): mat[:1, :, :2], (1, 0, 0): mat[1:, :, :2]}
+    self.btensor2 = BTensor(data, labels)
+    assert_(check_validity_tensor(self.btensor2))
+    assert_(check_validity_tensor(self.dtensor2))
+    return self
 
-        mat = array([[[-3, -3, 0, 0]],
-                     [[4, 4, 0, 0]]])
-        bm1 = BlockMarker([0, 1, 2], [[3], [1]])
-        bm2 = BlockMarker([0, 1], [[3]])
-        bm3 = BlockMarker([0, 2, 4], [[1], [0]])
-        labels = [BLabel('a', bm1), BLabel('d', bm2), BLabel('c', bm3)]
-        self.dtensor2 = Tensor(mat, labels=labels)
-        data = {(0, 0, 0): mat[:1, :, :2], (1, 0, 0): mat[1:, :, :2]}
-        self.btensor2 = BTensor(data, labels)
-        assert_(check_validity_tensor(self.btensor2))
-        assert_(check_validity_tensor(self.dtensor2))
+def test_mul3(btensor3d):
+    print('Test for multiplication')
+    dt = btensor3d.dtensor * btensor3d.dtensor2
+    bt = btensor3d.btensor * btensor3d.btensor2
+    assert_allclose(dt, bt.todense())
+    assert_(all(dt.labels[i] == bt.labels[i]
+                for i in range(len(dt.labels))))
 
-    def test_mul(self):
-        print('Test for multiplication')
-        dt = self.dtensor * self.dtensor2
-        bt = self.btensor * self.btensor2
-        assert_allclose(dt, bt.todense())
-        assert_(all(dt.labels[i] == bt.labels[i]
-                    for i in range(len(dt.labels))))
+def test_data_parsing3(btensor3d):
+    print('test for data parsing')
+    assert_allclose(btensor3d.dtensor, btensor3d.dtensor.tobtensor().todense())
+    assert_allclose(btensor3d.dtensor, btensor3d.btensor.todense())
+    print((btensor3d.btensor))
 
-    def test_data_parsing(self):
-        print('test for data parsing')
-        assert_allclose(self.dtensor, self.dtensor.tobtensor().todense())
-        assert_allclose(self.dtensor, self.btensor.todense())
-        print((self.btensor))
+def test_sum3(btensor3d):
+    print('Test sum of tensor.')
+    assert_(btensor3d.btensor.sum() == btensor3d.dtensor.sum())
+    assert_allclose(btensor3d.btensor.sum(axis=-1).todense(),
+                    btensor3d.dtensor.sum(axis=-1))
+    assert_allclose(btensor3d.btensor.sum(axis=(-2, -1)).todense(),
+                    btensor3d.dtensor.sum(axis=(-2, -1)))
 
-    def test_sum(self):
-        print('Test sum of tensor.')
-        assert_(self.btensor.sum() == self.dtensor.sum())
-        assert_allclose(self.btensor.sum(axis=-1).todense(),
-                        self.dtensor.sum(axis=-1))
-        assert_allclose(self.btensor.sum(axis=(-2, -1)).todense(),
-                        self.dtensor.sum(axis=(-2, -1)))
+def test_mul_axis3(btensor3d):
+    print('Testing multiplying 1D array to specific axis.')
+    for axis in [1, -1]:
+        arr = random.random(btensor3d.dtensor.shape[axis])
+        assert_allclose(btensor3d.btensor.mul_axis(
+            arr, axis=axis).todense(), btensor3d.dtensor.mul_axis(arr, axis=axis))
 
-    def test_mul_axis(self):
-        print('Testing multiplying 1D array to specific axis.')
-        for axis in [1, -1]:
-            arr = random.random(self.dtensor.shape[axis])
-            assert_allclose(self.btensor.mul_axis(
-                arr, axis=axis).todense(), self.dtensor.mul_axis(arr, axis=axis))
+def test_take3(btensor3d):
+    print('Testing taking axes!')
+    axis = 2
+    i = 1
+    axis_label = btensor3d.btensor.labels[axis]
+    t1 = btensor3d.dtensor.take(i, axis=axis)
+    # t2=btensor3d.btensor.take(i,axis=axis)
+    # assert_allclose(t1,t2.todense())
+    t11 = btensor3d.dtensor.take(i, axis=axis_label)
+    t22 = btensor3d.btensor.take(i, axis=axis_label)
+    assert_allclose(t11, t22.todense())
+    assert_allclose(t1, t11)
+    print('Testing taking block - axes!')
+    ib, axis = 0, 2
+    res = [[[-3, -3], [0, 0]], [[4, 4], [4, 4]]]
+    assert_allclose(btensor3d.dtensor.take_b(ib, axis=axis), res)
+    assert_allclose(btensor3d.btensor.take_b(ib, axis=axis).todense(), res)
 
-    def test_take(self):
-        print('Testing taking axes!')
-        axis = 2
-        i = 1
-        axis_label = self.btensor.labels[axis]
-        t1 = self.dtensor.take(i, axis=axis)
-        # t2=self.btensor.take(i,axis=axis)
-        # assert_allclose(t1,t2.todense())
-        t11 = self.dtensor.take(i, axis=axis_label)
-        t22 = self.btensor.take(i, axis=axis_label)
-        assert_allclose(t11, t22.todense())
-        assert_allclose(t1, t11)
-        print('Testing taking block - axes!')
-        ib, axis = 0, 2
-        res = [[[-3, -3], [0, 0]], [[4, 4], [4, 4]]]
-        assert_allclose(self.dtensor.take_b(ib, axis=axis), res)
-        assert_allclose(self.btensor.take_b(ib, axis=axis).todense(), res)
+def test_chorder3(btensor3d):
+    print('Testing chorder!')
+    norder = [2, 1, 0]
+    labels = [btensor3d.dtensor.labels[i] for i in norder]
+    t1 = btensor3d.dtensor.chorder(norder)
+    t2 = btensor3d.btensor.chorder(norder)
+    assert_allclose(t1, t2.todense())
+    t11 = btensor3d.dtensor.chorder(labels)
+    # t22=btensor3d.btensor.chorder(labels)
+    # assert_allclose(t11,t22.todense())
+    assert_allclose(t11, t1)
 
-    def test_chorder(self):
-        print('Testing chorder!')
-        norder = [2, 1, 0]
-        labels = [self.dtensor.labels[i] for i in norder]
-        t1 = self.dtensor.chorder(norder)
-        t2 = self.btensor.chorder(norder)
-        assert_allclose(t1, t2.todense())
-        t11 = self.dtensor.chorder(labels)
-        # t22=self.btensor.chorder(labels)
-        # assert_allclose(t11,t22.todense())
-        assert_allclose(t11, t1)
+def test_merge_split3(btensor3d):
+    print('Testing merge!')
+    axes = slice(1, 3)
+    lbs = btensor3d.dtensor.labels[axes]
+    t1 = btensor3d.btensor.merge_axes(axes)
+    t2 = btensor3d.dtensor.merge_axes(axes)
+    assert_allclose(t2, t1.todense())
+    print('Testing split!')
+    t11 = t1.split_axis(axis=axes.start, nlabels=lbs)
+    # [lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
+    t11b = t1.split_axis_b(axis=axes.start, nlabels=lbs)
+    t22 = t2.split_axis(axis=axes.start, nlabels=lbs)
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t11.labels, btensor3d.dtensor.labels)]))
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t11b.labels, btensor3d.dtensor.labels)]))
+    assert_(all([lb1 == lb2 for lb1, lb2 in zip(
+        t22.labels, btensor3d.dtensor.labels)]))
+    assert_allclose(t22, btensor3d.dtensor)
+    assert_allclose(t11.todense(), btensor3d.dtensor)
+    assert_allclose(t11b.todense(), btensor3d.dtensor)
 
-    def test_merge_split(self):
-        print('Testing merge!')
-        axes = slice(1, 3)
-        lbs = self.dtensor.labels[axes]
-        t1 = self.btensor.merge_axes(axes)
-        t2 = self.dtensor.merge_axes(axes)
-        assert_allclose(t2, t1.todense())
-        print('Testing split!')
-        t11 = t1.split_axis(axis=axes.start, nlabels=lbs)
-        # [lb.chbm(lb.bm.inflate()) if i!=len(lbs)-1 else lb for i,lb in enumerate(lbs)])
-        t11b = t1.split_axis_b(axis=axes.start, nlabels=lbs)
-        t22 = t2.split_axis(axis=axes.start, nlabels=lbs)
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t11.labels, self.dtensor.labels)]))
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t11b.labels, self.dtensor.labels)]))
-        assert_(all([lb1 == lb2 for lb1, lb2 in zip(
-            t22.labels, self.dtensor.labels)]))
-        assert_allclose(t22, self.dtensor)
-        assert_allclose(t11.todense(), self.dtensor)
-        assert_allclose(t11b.todense(), self.dtensor)
+def test_reorder3(btensor3d):
+    print('Testing reordering!')
+    t1 = btensor3d.dtensor2.b_reorder()
+    t2 = btensor3d.btensor2.b_reorder()
+    assert_allclose(t1, t2.todense())
+    assert_(
+        all([lb1.bm == lb2.bm for lb1, lb2 in zip(t1.labels, t2.labels)]))
+    assert_(check_validity_tensor(t1))
+    assert_(check_validity_tensor(t2))
 
-    def test_reorder(self):
-        print('Testing reordering!')
-        t1 = self.dtensor2.b_reorder()
-        t2 = self.btensor2.b_reorder()
-        assert_allclose(t1, t2.todense())
+def test_bdiag3(btensor3d):
+    print('Test for tensor_block_diag.')
+    for axes in [(-2,), (1, 2)]:
+        dres = tensor_block_diag([btensor3d.dtensor, btensor3d.dtensor2], axes=axes)
+        bres = tensor_block_diag([btensor3d.btensor, btensor3d.btensor2], axes=axes)
         assert_(
-            all([lb1.bm == lb2.bm for lb1, lb2 in zip(t1.labels, t2.labels)]))
-        assert_(check_validity_tensor(t1))
-        assert_(check_validity_tensor(t2))
+            all([lb1.bm == lb2.bm for lb1, lb2 in zip(dres.labels, bres.labels)]))
+        assert_allclose(dres, bres.todense())
 
-    def test_bdiag(self):
-        print('Test for tensor_block_diag.')
-        for axes in [(-2,), (1, 2)]:
-            dres = tensor_block_diag([self.dtensor, self.dtensor2], axes=axes)
-            bres = tensor_block_diag([self.btensor, self.btensor2], axes=axes)
-            assert_(
-                all([lb1.bm == lb2.bm for lb1, lb2 in zip(dres.labels, bres.labels)]))
-            assert_allclose(dres, bres.todense())
+def test_bother3(btensor3d):
+    print('Test abs for btensor.')
+    assert_allclose(abs(btensor3d.btensor).todense(), abs(btensor3d.dtensor))
+    print('Test power for btensor.')
+    assert_allclose((btensor3d.btensor**3).todense(), btensor3d.dtensor**3)
 
-    def test_bother(self):
-        print('Test abs for btensor.')
-        assert_allclose(abs(self.btensor).todense(), abs(self.dtensor))
-        print('Test power for btensor.')
-        assert_allclose((self.btensor**3).todense(), self.dtensor**3)
-
-    def test_all(self):
-        self.test_sum()
-        self.test_mul()
-        self.test_data_parsing()
-        self.test_mul_axis()
-        self.test_chorder()
-        self.test_take()
-        self.test_merge_split()
-        self.test_reorder()
-        self.test_bother()
+def btensor3d_all():
+    self = btensor3d()
+    test_sum3(self)
+    test_mul3(self)
+    test_data_parsing3(self)
+    test_mul_axis3(self)
+    test_chorder3(self)
+    test_take3(self)
+    test_merge_split3(self)
+    test_reorder3(self)
+    test_bother3(self)
 
 
 def test_tensor():
@@ -395,25 +400,80 @@ def test_svdbd():
     assert_allclose(ts, ((U2.mul_axis(S2, -1)) * V2).todense())
 
 
-def test_tensor_svd(kernel):
+def test_tensor_svd():
+    kernel_list = ['svd', 'ldu', 'dpl_r', 'dpl_c']
+    for kernel in kernel_list:
+        print(('Test @Tensor.svd, using kernel %s' % kernel))
+        spaceconfig = SpinSpaceConfig([1, 2])
+        bmg = SimpleBMG(spaceconfig=spaceconfig, qstring='M')
+        bm1 = bmg.bm1_  # [1, -1]
+        bm2 = BlockMarker(qns=array([[0], [2]], dtype=bm1.qns.dtype), Nr=[0, 2, 3])
+        t = Tensor([[[0, 0, -1], [3, 2, 0]], [[4, 9, 0], [0, 0, 0]]],
+                   labels=[BLabel('X', bm1), BLabel('Y', bm1), BLabel('Z', bm2)])
+        assert_(is_zero_flux(t, signs=[-1, -1, 1], bmg=bmg))
+        for cbond in [1, 2]:
+            print(('cbond = ', cbond))
+            data = t.svd(cbond=1, cbond_str='C',
+                         signs=[-1, -1, 1], bmg=bmg, kernel=kernel)
+            if kernel == 'svd' or kernel == 'ldu':
+                U = data[0].mul_axis(data[1], cbond)
+            else:
+                U = data[0]
+            assert_allclose(t - U * data[-1], 0, atol=1e-8)
+
+
+def test_tensor_eigh():
+    kernel = 'eigh'
     print(('Test @Tensor.svd, using kernel %s' % kernel))
     spaceconfig = SpinSpaceConfig([1, 2])
     bmg = SimpleBMG(spaceconfig=spaceconfig, qstring='M')
     bm1 = bmg.bm1_  # [1, -1]
-    bm2 = BlockMarker(qns=array([[0], [2]], dtype=bm1.qns.dtype), Nr=[0, 2, 3])
-    t = Tensor([[[0, 0, -1], [3, 2, 0]], [[4, 9, 0], [0, 0, 0]]],
+    bm2 = BlockMarker(qns=array([[-2], [0], [2]], dtype=bm1.qns.dtype), Nr=[0, 1, 3, 4])
+    t = Tensor([[[2, 0, 0, 0], [0, 1, -1, 0]], [[0, -1, 1, 0], [0, 0, 0, -3]]],
                labels=[BLabel('X', bm1), BLabel('Y', bm1), BLabel('Z', bm2)])
-    assert_(check_flow_tensor(t, signs=[-1, -1, 1], bmg=bmg))
-    for cbond in [1, 2]:
-        print(('cbound = ', cbond))
-        data = t.svd(cbond=1, cbond_str='C',
-                     signs=[-1, -1, 1], bmg=bmg, kernel=kernel)
-        if kernel == 'svd' or kernel == 'ldu':
-            U = data[0].mul_axis(data[1], cbond)
-        else:
-            U = data[0]
-        assert_allclose(t - U * data[-1], 0, atol=1e-8)
+    assert_(is_zero_flux(t, signs=[-1, -1, -1], bmg=bmg))
+    cbond = 2
+    print(('cbond = ', cbond))
+    data = t.svd(cbond=2, cbond_str='C',
+                 signs=[-1, -1, -1], bmg=bmg, kernel=kernel)
+    U = data[0].mul_axis(data[1], cbond)
+    assert_allclose(t - U * data[-1], 0, atol=1e-8)
 
+def test_nzblocks():
+    spaceconfig = SuperSpaceConfig([1, 2, 1])
+    print('Testing nz_blocks')
+    bmg = SimpleBMG(spaceconfig=spaceconfig, qstring='QM')
+    bm1 = bmg.bm1_  # [1, -1]
+    bm2 = bmg.join_bms([bm1, bm1], signs=[1,1]).sort().compact_form()
+    bms = [bm1, bm2, bm1]
+    signs = [1,-1,1]
+    nzblocks = zero_flux_blocks([bm.qns for bm in bms], signs, bmg)
+    assert_(len(nzblocks[0])==bm1.nblock**2)
+    for b in zip(*nzblocks):
+        assert_allclose(sum([bm.qns[ind]*s for bm, ind, s in zip(bms, b, signs)], axis=0), 0)
+
+
+def test_random_zeroflux():
+    info = {}
+    signs = [1,1,-1]
+    print('Testing generating random zero-flux tensor.')
+    ts = random_zeroflux_tensor([1,2,3], signs=signs, info=info)
+    assert_(is_zero_flux(ts, signs=signs, bmg=info['bmg']))
+
+
+def test_btdot():
+    sign1 = [1,1,-1]
+    sign2 = [1,-1,1]
+    info = {}
+    print('Testing btdot')
+    ts1 = random_zeroflux_tensor([1,2,3], signs=sign1, info=info)
+    ts2 = random_zeroflux_tensor([ts1.labels[2].bm,4,ts1.labels[0].bm], signs=sign2, info=info)
+    ts2.chlabel('o_2', 1)
+    ts2.chlabel(ts1.labels[0], 2)
+    ts2.chlabel(ts1.labels[2], 0)
+    ts = btdot(ts1, ts2, sign1, sign2, info['bmg'])
+    ts_t = tdot(ts1, ts2)
+    assert_allclose(ts, ts_t)
 
 def test_blabel():
     print('test BLabel. chbm,chstr')
@@ -438,13 +498,14 @@ def test_blabel():
 
 
 if __name__ == '__main__':
-    test_tensor_svd('svd')
-    test_tensor_svd('ldu')
-    test_tensor_svd('dpl_r')
-    test_tensor_svd('dpl_c')
-    TestBTensor2D().test_all()
-    TestBTensor3D().test_all()
+    test_btdot()
+    test_nzblocks()
+    test_tensor_svd()
+    test_tensor_eigh()
+    btensor2d_all()
+    btensor3d_all()
     test_btensor()
     test_blabel()
     test_tensor()
     test_svdbd()
+    test_random_zeroflux()
