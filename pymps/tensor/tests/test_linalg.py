@@ -56,9 +56,9 @@ def test_dpl():
     assert_(M.shape[1] == 2)
     assert_allclose(M.dot(T), A.T)
     print('Test DPL, row wise')
-    M, T = dpl(A, 0)
+    T, M = dpl(A, 0)
     assert_(M.shape[0] == 2)
-    assert_allclose(T.T.dot(M), A)
+    assert_allclose(T.dot(M), A)
 
 
 if __name__ == '__main__':

@@ -12,7 +12,6 @@ from numpy.linalg import norm
 from scipy.linalg import svd
 from abc import ABCMeta, abstractmethod
 
-from ..toolbox.utils import inherit_docstring_from
 from ..blockmarker import block_diag, SimpleBMG, join_bms, BlockMarker, trunc_bm
 from .tensor import TensorBase, BLabel, Tensor, ZERO_REF
 
@@ -131,12 +130,10 @@ class BTensor(TensorBase):
     def __pow__(self, target):
         return BTensor(dict((key, data**target) for key, data in self.data.items()), self.labels[:])
 
-    @inherit_docstring_from(TensorBase)
     def todense(self):
         res = Tensor(self.toarray(), labels=self.labels[:])
         return res
 
-    @inherit_docstring_from(TensorBase)
     def toarray(self):
         if self.nnzblock == 0:
             return np.zeros(self.shape, dtype=self.dtype)
@@ -146,7 +143,6 @@ class BTensor(TensorBase):
             arr[tuple(bmi.get_slice(qi) for qi, bmi in zip(q, bms))] = data
         return arr
 
-    @inherit_docstring_from(TensorBase)
     def mul_axis(self, vec, axis):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -159,7 +155,6 @@ class BTensor(TensorBase):
             t.data[k] = data * bm.extract_block(vec, ij=(k[axis],), axes=(0,))
         return t
 
-    @inherit_docstring_from(TensorBase)
     def make_copy(self, labels=None, copydata=True):
         if labels is None:
             labels = self.labels[:]
@@ -171,7 +166,6 @@ class BTensor(TensorBase):
         t = BTensor(data=data, labels=labels)
         return t
 
-    @inherit_docstring_from(TensorBase)
     def take(self, key, axis):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -246,7 +240,6 @@ class BTensor(TensorBase):
         t = BTensor(data=datas, labels=labels)
         return t
 
-    @inherit_docstring_from(TensorBase)
     def chorder(self, order):
         assert(len(order)) == self.ndim
         if isinstance(order[0], str):
@@ -256,7 +249,6 @@ class BTensor(TensorBase):
         t = BTensor(data, labels=[self.labels[i] for i in order])
         return t
 
-    @inherit_docstring_from(TensorBase)
     def merge_axes(self, sls, nlabel=None, signs=None, bmg=None):
         axes = np.mgrid[sls]
         labels = self.labels
@@ -291,7 +283,6 @@ class BTensor(TensorBase):
         # generate the new tensor
         return BTensor(ndata, labels=newlabels)
 
-    @inherit_docstring_from(TensorBase)
     def split_axis(self, axis, nlabels, **kwargs):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -384,11 +375,9 @@ class BTensor(TensorBase):
         else:
             raise TypeError()
 
-    @inherit_docstring_from(TensorBase)
     def get_block(self, block):
         return self.data.get(block, np.zeros([lb.bm.blocksize(n) for lb, n in zip(self.labels, block)], dtype=self.dtype))
 
-    @inherit_docstring_from(TensorBase)
     def set_block(self, block, data):
         self.data[block] = data
 
@@ -445,7 +434,6 @@ class BTensor(TensorBase):
         else:
             return ts
 
-    @inherit_docstring_from(TensorBase)
     def eliminate_zeros(self, tol=ZERO_REF):
         for blk, data in self.data.items():
             if data.size == 0:

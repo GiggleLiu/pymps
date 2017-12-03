@@ -12,7 +12,6 @@ import numbers
 import itertools
 
 from .basic import ldu, dpl
-from ..toolbox.utils import inherit_docstring_from
 from ..blockmarker import join_bms, BlockMarker, block_diag
 
 __all__ = ['TensorBase', 'Tensor', 'tdot', 'BLabel']
@@ -510,7 +509,6 @@ class Tensor(np.ndarray, TensorBase):
         res = Tensor(np.asarray(self).conj(), labels=self.labels[:])
         return res
 
-    @inherit_docstring_from(TensorBase)
     def make_copy(self, labels=None, copydata=True):
         if labels is not None:
             assert(len(labels) == len(self.shape))
@@ -525,11 +523,9 @@ class Tensor(np.ndarray, TensorBase):
             res.labels = labels
             return res
 
-    @inherit_docstring_from(TensorBase)
     def todense(self):
         return self.make_copy()
 
-    @inherit_docstring_from(TensorBase)
     def take(self, key, axis):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -551,7 +547,7 @@ class Tensor(np.ndarray, TensorBase):
                 # inflate and take the desired dimensions
                 bm_infl = bm.inflate()
                 qns = bm_infl.qns[key]
-                bm = BlockMarker(qns=qns, Nr=np.arange(len(qns) + 1))
+                bm = BlockMarker(qns=qns, Nr=np.arange(len(qns) + 1)).compact_form()
                 labels[axis] = labels[axis].chbm(bm)
             else:
                 # 1d case, shrink a dimension.
@@ -588,7 +584,6 @@ class Tensor(np.ndarray, TensorBase):
             [self[(slice(None),) * axis + (bm.get_slice(k),)] for k in key], axis=axis)
         return Tensor(ts, labels=labels)
 
-    @inherit_docstring_from(TensorBase)
     def chorder(self, order):
         assert(len(order)) == np.ndim(self)
         if isinstance(order[0], str):
@@ -597,7 +592,6 @@ class Tensor(np.ndarray, TensorBase):
                    self.labels[i] for i in order])
         return t
 
-    @inherit_docstring_from(TensorBase)
     def mul_axis(self, vec, axis):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -611,7 +605,6 @@ class Tensor(np.ndarray, TensorBase):
             raise TypeError('Wrong type for axis indicator: %s.' %
                             axis.__class__)
 
-    @inherit_docstring_from(TensorBase)
     def merge_axes(self, sls, nlabel=None, signs=None, bmg=None):
         start, stop = sls.start, sls.stop
         if stop is None:
@@ -647,7 +640,6 @@ class Tensor(np.ndarray, TensorBase):
         # generate the new tensor
         return Tensor(ts, labels=newlabels)
 
-    @inherit_docstring_from(TensorBase)
     def split_axis(self, axis, nlabels, dims=None):
         if isinstance(axis, str):
             axis = self.labels.index(axis)
@@ -668,19 +660,16 @@ class Tensor(np.ndarray, TensorBase):
     def split_axis_b(*args, **kwargs):
         return self.split_axis(*args, **kwargs)
 
-    @inherit_docstring_from(TensorBase)
     def get_block(self, block):
         if not isinstance(self.labels[0], BLabel):
             raise Exception('This tensor is not blocked!')
         return self[tuple([lb.bm.get_slice(b) for b, lb in zip(block, self.labels)])]
 
-    @inherit_docstring_from(TensorBase)
     def set_block(self, block, data):
         if not isinstance(self.labels[0], BLabel):
             raise Exception('This tensor is not blocked!')
         self[tuple([lb.bm.get_slice(b) for b, lb in zip(block, self.labels)])] = data
 
-    @inherit_docstring_from(TensorBase)
     def toarray(self):
         return np.asarray(self)
 
@@ -732,7 +721,6 @@ class Tensor(np.ndarray, TensorBase):
         else:
             return ts
 
-    @inherit_docstring_from(TensorBase)
     def eliminate_zeros(self, tol=ZERO_REF):
         self[abs(self) < tol] = 0
         return self

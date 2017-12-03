@@ -8,20 +8,10 @@ import copy
 import numbers
 from functools import reduce
 
+from ..toolbox.string import format_factor
+
 __all__ = ['OpUnit', 'OpString', 'OpCollection', 'OpUnitI']
 UNSETTLED = '-'
-
-
-def _format_factor(num):
-    if abs(num - 1) < 1e-5:
-        return ''
-    if abs(imag(num)) < 1e-5:
-        num = real(num)
-    if imag(num) == 0 and abs(fmod(real(num), 1)) < 1e-5:
-        num = int(num)
-    res = '%s*' % around(num, decimals=3)
-    return res
-
 
 class OpUnit(object):
     '''
@@ -68,10 +58,10 @@ class OpUnit(object):
                             target.__class__)
 
     def __str__(self):
-        return _format_factor(self.factor) + '%s[%s] = %s' % (self.label, self.siteindex, self.get_data())
+        return format_factor(self.factor) + '%s[%s] = %s' % (self.label, self.siteindex, self.get_data())
 
     def __repr__(self):
-        return _format_factor(self.factor) + self.label + ('' if self.siteindex == '-' else '[%s]' % self.siteindex)
+        return format_factor(self.factor) + self.label + ('' if self.siteindex == '-' else '[%s]' % self.siteindex)
 
     def __mul__(self, target):
         if isinstance(target, numbers.Number):
@@ -133,9 +123,9 @@ class OpUnit(object):
                 if target.fermionic != self.fermionic:
                     raise Exception(
                         'Can not add opunits with difference parity!')
-                return OpUnit(label='%s%s+%s%s' % (_format_factor(self.factor), self.label, _format_factor(target.factor), target.label),
+                return OpUnit(label='%s%s+%s%s' % (format_factor(self.factor), self.label, format_factor(target.factor), target.label),
                               data=self.factor * self.data + target.factor * target.data, siteindex=self.siteindex,
-                              math_str='%s%s+%s%s' % (_format_factor(self.factor), self.__math_str__, _format_factor(target.factor), target.__math_str__), fermionic=self.fermionic)
+                              math_str='%s%s+%s%s' % (format_factor(self.factor), self.__math_str__, format_factor(target.factor), target.__math_str__), fermionic=self.fermionic)
             else:
                 return OpCollection([self, target])
         elif isinstance(target, OpString):

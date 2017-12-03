@@ -6,7 +6,6 @@ from numpy import *
 import pdb
 
 from ..tensor import Tensor
-from ..toolbox.utils import inherit_docstring_from
 from .mps import MPSBase, mPS
 
 __all__ = ['VidalMPS']
@@ -58,17 +57,14 @@ class VidalMPS(MPSBase):
         return string
 
     @property
-    @inherit_docstring_from(MPSBase)
     def hndim(self):
         return self.GL[0].shape[self.site_axis]
 
     @property
-    @inherit_docstring_from(MPSBase)
     def nsite(self):
         return len(self.GL)
 
     @property
-    @inherit_docstring_from(MPSBase)
     def state(self):
         ULG = [gi.reshape([-1, gi.shape[self.rlink_axis]]) for gi in self.GL]
         LL = self.LL

@@ -6,7 +6,6 @@ from numpy import *
 from itertools import combinations
 from functools import reduce
 
-from ..toolbox.utils import inherit_docstring_from
 from ..blockmarker import BlockMarker
 from .sa import sap, anneal, SAP
 
@@ -213,12 +212,10 @@ class TNCSAP(SAP):
         res = [comb[oi] for comb, oi in zip(self.combs, order)]
         return res
 
-    @inherit_docstring_from(SAP)
     def get_cost(self, state):
         cost = self.tnet.complexity(self._decode(state))
         return cost
 
-    @inherit_docstring_from(SAP)
     def propose(self, state, cost):
         order = state
         istep = self._random_step()
@@ -229,12 +226,10 @@ class TNCSAP(SAP):
         dcomp = ncomp - cost
         return (istep, norder), dcomp
 
-    @inherit_docstring_from(SAP)
     def accept(self, proposal, state):
         (istep, norder), dcomp = proposal
         return norder
 
-    @inherit_docstring_from(SAP)
     def get_random_state(self):
         order = array([random.randint(N * (N - 1) / 2)
                        for N in range(self.tnet.ntensor, 1, -1)])  # upto N=ntensor,...,2

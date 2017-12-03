@@ -11,7 +11,6 @@ import numbers
 from abc import ABCMeta, abstractmethod
 from functools import reduce
 
-from ..toolbox.utils import inherit_docstring_from
 from ..tensor.tensor import BLabel, Tensor, TensorBase
 from ..tensor.tensorlib import tensor_block_diag, check_validity_tensor
 
@@ -358,12 +357,10 @@ class MPS(MPSBase):
         return self.ML[0].shape[self.site_axis]
 
     @property
-    @inherit_docstring_from(MPSBase)
     def nsite(self):
         return len(self.ML)
 
     @property
-    @inherit_docstring_from(MPSBase)
     def state(self):
         ML = self.get_all()
         res = reduce(lambda x, y: x * y, ML)
@@ -546,7 +543,6 @@ class MPS(MPSBase):
                   self.S if sharedata else self.S[...], is_ket=self.is_ket, labels=self.labels[:], bmg=bmg)
         return mps
 
-    @inherit_docstring_from(MPSBase)
     def toket(self, labels=None):
         if labels is None:
             labels = self.labels[:]
@@ -555,7 +551,6 @@ class MPS(MPSBase):
                   self.S if self.is_ket else self.S.conj(), is_ket=True, labels=labels)
         return mps
 
-    @inherit_docstring_from(MPSBase)
     def tobra(self, labels=None):
         # get new labels,
         if labels is None:
@@ -705,7 +700,6 @@ class BMPS(MPS):
                   self.S if sharedata else self.S[...], is_ket=self.is_ket, labels=self.labels[:])
         return mps
 
-    @inherit_docstring_from(MPS)
     def toket(self, labels=None):
         if labels is None:
             labels = self.labels[:]
@@ -714,7 +708,6 @@ class BMPS(MPS):
                   self.S if self.is_ket else self.S.conj(), is_ket=True, labels=labels, bmg=self.bmg)
         return mps
 
-    @inherit_docstring_from(MPS)
     def tobra(self, labels=None):
         if labels is None:
             labels = self.labels[:]

@@ -74,9 +74,9 @@ def _zero_flux_mask(qns_list, signs, bmg, zero):
     return mask
  
 
-def btdot(tensor1, tensor2, signs1, signs2, bmg):
+def btdot(tensor1, tensor2, signs1, signs2, bmg, check_bm=False):
     '''
-    Tensor dot between two tensors, faster than contract in most case?
+    block version tensordot, requires tensors blocks to be compact.
 
     Args:
         tensor1,tensor2 (:obj:`Tensor`): two tensors to contract.
@@ -85,6 +85,8 @@ def btdot(tensor1, tensor2, signs1, signs2, bmg):
         :obj:`Tensor`: output tensor.
     '''
     inner1, inner2, outer1, outer2 = _same_diff_labels(tensor1.labels, tensor2.labels)
+    if check_bm:
+        assert(all([tensor1.labels[i1].bm==tensor2.labels[i2].bm for i1, i2 in zip(inner1, inner2)]))
     # output array
     out_shape = [tensor1.shape[i] for i in outer1]+[tensor2.shape[i] for i in outer2]
     out_arr = np.zeros(out_shape, dtype=np.find_common_type((tensor1.dtype, tensor2.dtype), ()))
@@ -101,7 +103,7 @@ def btdot(tensor1, tensor2, signs1, signs2, bmg):
                 for b2, o2 in l2:
                     out_b = o1+o2
                     bdata = np.tensordot(tensor1.get_block(b1), tensor2.get_block(b2), axes=(inner1, inner2))
-                    out_arr.set_block(out_b, bdata)
+                    out_arr.set_block(out_b, bdata+out_arr.get_block(out_b))
     return out_arr
 
 

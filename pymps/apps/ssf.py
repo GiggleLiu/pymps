@@ -12,7 +12,7 @@ import tensor
 from contraction import USVobj, G_Gong
 from mps import MPSBase
 from tnet import TNet, find_optcontract
-from utils import eigen_cholesky, inherit_docstring_from
+from utils import eigen_cholesky
 
 __all__ = ['ReducedMPS', 'get_segment', 'seg_overlap',
            'SSFC2E', 'SSFLR', 'SSFE2C', 'SSFC2E_F']
@@ -48,7 +48,6 @@ class ReducedMPS(MPSBase):
     def nsite(self):
         return self.SN[-1]
 
-    @inherit_docstring_from(MPSBase)
     def tobra(self, labels=None):
         if labels is None:
             labels = self.labels[:]
@@ -57,7 +56,6 @@ class ReducedMPS(MPSBase):
         else:
             return ReducedMPS(ML=[mi.conj() for mi in self.ML], SN=self.SN[:], labels=labels, is_ket=False)
 
-    @inherit_docstring_from(MPSBase)
     def toket(self, labels=None):
         if labels is None:
             labels = self.labels[:]

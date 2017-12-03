@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 from numpy.linalg import norm
 from scipy.linalg import svd, lu
 
@@ -7,16 +8,18 @@ __all__ = ['dpl', 'ldu']
 
 def dpl(A, axis, tol=1e-12):
     '''DeParallelize, MT = A.'''
-    axes = list(range(A.ndim))
-    axes.remove(axis)
+    # norm over remaining axes
+    axes = [i for i in range(A.ndim) if i!=axis]
     axes = tuple(axes)
     nA = norm(A, axis=axes)
+
     # check for zeros
     nz_inds = np.where(nA > tol)[0]
     AA = np.asarray(A).take(nz_inds, axis=axis)
     nA = nA[nz_inds]
     Au = AA / nA.reshape([-1] + [1] * (AA.ndim - axis - 1))
     Au = Au.view(np.ndarray)
+
     # Au=AA.mul_axis(1./norm(AA,axis=axes),axis=axis)
     groups = []
     unique_cols = []
